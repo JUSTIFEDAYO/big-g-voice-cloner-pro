@@ -1,0 +1,378 @@
+[
+  {
+    "id": "en-US-AnaNeural",
+    "name": "Microsoft Ana Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-AndrewNeural",
+    "name": "Microsoft Andrew Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-AndrewMultilingualNeural",
+    "name": "Microsoft AndrewMultilingual Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-AriaNeural",
+    "name": "Microsoft Aria Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-AvaNeural",
+    "name": "Microsoft Ava Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-AvaMultilingualNeural",
+    "name": "Microsoft AvaMultilingual Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-BrianNeural",
+    "name": "Microsoft Brian Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-BrianMultilingualNeural",
+    "name": "Microsoft BrianMultilingual Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-ChristopherNeural",
+    "name": "Microsoft Christopher Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-EmmaNeural",
+    "name": "Microsoft Emma Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-EmmaMultilingualNeural",
+    "name": "Microsoft EmmaMultilingual Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-EricNeural",
+    "name": "Microsoft Eric Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-GuyNeural",
+    "name": "Microsoft Guy Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-JennyNeural",
+    "name": "Microsoft Jenny Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-MichelleNeural",
+    "name": "Microsoft Michelle Online (Natural - English (United States",
+    "gender": "Female",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-RogerNeural",
+    "name": "Microsoft Roger Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-US-SteffanNeural",
+    "name": "Microsoft Steffan Online (Natural - English (United States",
+    "gender": "Male",
+    "locale": "en-US",
+    "suggested": true,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-NG-AbeoNeural",
+    "name": "Microsoft Abeo Online (Natural - English (Nigeria",
+    "gender": "Male",
+    "locale": "en-NG",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-KE-AsiliaNeural",
+    "name": "Microsoft Asilia Online (Natural - English (Kenya",
+    "gender": "Female",
+    "locale": "en-KE",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-KE-ChilembaNeural",
+    "name": "Microsoft Chilemba Online (Natural - English (Kenya",
+    "gender": "Male",
+    "locale": "en-KE",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-CA-ClaraNeural",
+    "name": "Microsoft Clara Online (Natural - English (Canada",
+    "gender": "Female",
+    "locale": "en-CA",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-IE-ConnorNeural",
+    "name": "Microsoft Connor Online (Natural - English (Ireland",
+    "gender": "Male",
+    "locale": "en-IE",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-TZ-ElimuNeural",
+    "name": "Microsoft Elimu Online (Natural - English (Tanzania",
+    "gender": "Male",
+    "locale": "en-TZ",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-IE-EmilyNeural",
+    "name": "Microsoft Emily Online (Natural - English (Ireland",
+    "gender": "Female",
+    "locale": "en-IE",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-NG-EzinneNeural",
+    "name": "Microsoft Ezinne Online (Natural - English (Nigeria",
+    "gender": "Female",
+    "locale": "en-NG",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-TZ-ImaniNeural",
+    "name": "Microsoft Imani Online (Natural - English (Tanzania",
+    "gender": "Female",
+    "locale": "en-TZ",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-PH-JamesNeural",
+    "name": "Microsoft James Online (Natural - English (Philippines",
+    "gender": "Male",
+    "locale": "en-PH",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-ZA-LeahNeural",
+    "name": "Microsoft Leah Online (Natural - English (South Africa",
+    "gender": "Female",
+    "locale": "en-ZA",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-CA-LiamNeural",
+    "name": "Microsoft Liam Online (Natural - English (Canada",
+    "gender": "Male",
+    "locale": "en-CA",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-GB-LibbyNeural",
+    "name": "Microsoft Libby Online (Natural - English (United Kingdom",
+    "gender": "Female",
+    "locale": "en-GB",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-ZA-LukeNeural",
+    "name": "Microsoft Luke Online (Natural - English (South Africa",
+    "gender": "Male",
+    "locale": "en-ZA",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-SG-LunaNeural",
+    "name": "Microsoft Luna Online (Natural - English (Singapore",
+    "gender": "Female",
+    "locale": "en-SG",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-GB-MaisieNeural",
+    "name": "Microsoft Maisie Online (Natural - English (United Kingdom",
+    "gender": "Female",
+    "locale": "en-GB",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-NZ-MitchellNeural",
+    "name": "Microsoft Mitchell Online (Natural - English (New Zealand",
+    "gender": "Male",
+    "locale": "en-NZ",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-NZ-MollyNeural",
+    "name": "Microsoft Molly Online (Natural - English (New Zealand",
+    "gender": "Female",
+    "locale": "en-NZ",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-AU-NatashaNeural",
+    "name": "Microsoft Natasha Online (Natural - English (Australia",
+    "gender": "Female",
+    "locale": "en-AU",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-IN-NeerjaNeural",
+    "name": "Microsoft Neerja Online (Natural - English (India",
+    "gender": "Female",
+    "locale": "en-IN",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-IN-NeerjaExpressiveNeural",
+    "name": "Microsoft Neerja Online (Natural - English (India (Preview",
+    "gender": "Female",
+    "locale": "en-IN",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-IN-PrabhatNeural",
+    "name": "Microsoft Prabhat Online (Natural - English (India",
+    "gender": "Male",
+    "locale": "en-IN",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-PH-RosaNeural",
+    "name": "Microsoft Rosa Online (Natural - English (Philippines",
+    "gender": "Female",
+    "locale": "en-PH",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-GB-RyanNeural",
+    "name": "Microsoft Ryan Online (Natural - English (United Kingdom",
+    "gender": "Male",
+    "locale": "en-GB",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-HK-SamNeural",
+    "name": "Microsoft Sam Online (Natural - English (Hongkong",
+    "gender": "Male",
+    "locale": "en-HK",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-GB-SoniaNeural",
+    "name": "Microsoft Sonia Online (Natural - English (United Kingdom",
+    "gender": "Female",
+    "locale": "en-GB",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-GB-ThomasNeural",
+    "name": "Microsoft Thomas Online (Natural - English (United Kingdom",
+    "gender": "Male",
+    "locale": "en-GB",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-SG-WayneNeural",
+    "name": "Microsoft Wayne Online (Natural - English (Singapore",
+    "gender": "Male",
+    "locale": "en-SG",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-AU-WilliamMultilingualNeural",
+    "name": "Microsoft WilliamMultilingual Online (Natural - English (Australia",
+    "gender": "Male",
+    "locale": "en-AU",
+    "suggested": false,
+    "is_fish_pro": false
+  },
+  {
+    "id": "en-HK-YanNeural",
+    "name": "Microsoft Yan Online (Natural - English (Hong Kong SAR",
+    "gender": "Female",
+    "locale": "en-HK",
+    "suggested": false,
+    "is_fish_pro": false
+  }
+]

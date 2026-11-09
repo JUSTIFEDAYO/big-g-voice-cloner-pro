@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+uploads/
+outputs/
+voices/*.json
+!voices/us_voices_cache.json
+.vscode/

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: big-g-voice-cloner-pro
+    env: python
+    plan: free
+    region: frankfurt # Low latency to West Africa / Nigeria
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FISH_AUDIO_API_KEY
+        sync: false
+      - key: FISH_AUDIO_MODEL
+        value: s2.1-pro-free

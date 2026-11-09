@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BIG G'S VOICE CLONER PRO | Next-Gen Voice AI Studio</title>
+  <style>
+    :root {
+      --bg-dark: #0a0d14;
+      --card-bg: #121826;
+      --card-border: #1f293d;
+      --accent-blue: #3b82f6;
+      --accent-indigo: #6366f1;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #ec4899;
+      --accent-amber: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-sub: #64748b;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header Nav */
+    header {
+      background: rgba(18, 24, 38, 0.95);
+      border-bottom: 1px solid var(--card-border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 800;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-free {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(30, 41, 59, 0.7);
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--card-border);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Tabs Bar */
+    .tabs-bar {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(139, 92, 246, 0.25));
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    /* Studio Grid */
+    .studio-grid {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .studio-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pill-presets {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .pill-btn:hover {
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+
+    textarea {
+      width: 100%;
+      height: 140px;
+      background: #0b0f19;
+      border: 1px solid #28354d;
+      border-radius: 10px;
+      color: #fff;
+      padding: 14px;
+      font-size: 0.95rem;
+      resize: vertical;
+      line-height: 1.5;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    }
+
+    /* Controls & FX */
+    .controls-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .control-group {
+      background: #0f1524;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #1c2638;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      font-weight: 500;
+    }
+
+    .control-label span:last-child {
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #25334c;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--accent-blue);
+    }
+
+    /* FX Selector Grid */
+    .fx-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+    }
+
+    .fx-chip {
+      background: #0c121e;
+      border: 1px solid #1e293d;
+      color: var(--text-muted);
+      font-size: 0.76rem;
+      padding: 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      font-weight: 600;
+    }
+
+    .fx-chip:hover {
+      background: #151e30;
+      color: #fff;
+    }
+
+    .fx-chip.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: var(--accent-indigo);
+      color: #818cf8;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 22px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 8px 25px rgba(99, 102, 241, 0.6);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .output-card {
+      background: #0d121f;
+      border: 1px dashed #2b3954;
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .audio-player {
+      width: 100%;
+      height: 40px;
+      outline: none;
+      border-radius: 8px;
+    }
+
+    /* Voice Sidebar */
+    .selected-voice-preview {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .voice-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .voice-info {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .voice-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .voice-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .voice-search {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0a0e17;
+      border: 1px solid #1f2a3e;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .voice-search:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .voice-filter-tabs {
+      display: flex;
+      gap: 6px;
+    }
+
+    .v-filter-btn {
+      flex: 1;
+      background: #151d2c;
+      border: 1px solid #233149;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .v-filter-btn.active {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+
+    .voice-list {
+      max-height: 400px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 4px;
+    }
+
+    .voice-item {
+      padding: 10px 12px;
+      background: #0f1626;
+      border: 1px solid #1c2638;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .voice-item:hover {
+      background: #172238;
+      border-color: #2e3e5c;
+    }
+
+    .voice-item.selected {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--accent-indigo);
+    }
+
+    .badge-pro {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      font-size: 0.65rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    /* Dialogue & Story Studio */
+    .dialogue-bubble {
+      background: #0e1422;
+      border: 1px solid #1d273a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+
+    .clone-box {
+      border: 2px dashed #2a374f;
+      border-radius: 12px;
+      padding: 30px;
+      text-align: center;
+      background: #0c111c;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .clone-box:hover {
+      border-color: var(--accent-blue);
+      background: #0f1624;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+    }
+
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">🎙️</div>
+      <div>
+        <div class="brand-title">
+          BIG G'S VOICE CLONER PRO
+          <span class="badge-free">Ultra-Human Studio</span>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-sub);">Zero-Shot Cloning • Pro Human Voices • Story Studio</div>
+      </div>
+    </div>
+    <div class="status-badge" id="engine-status">
+      <span class="status-dot"></span>
+      <span id="engine-text">Fish Audio s2.1-pro Ready</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Navigation Tabs -->
+    <div class="tabs-bar">
+      <button class="tab-btn active" onclick="switchTab('tts')">🎙️ Speech Studio</button>
+      <button class="tab-btn" onclick="switchTab('dialogue')">🎭 Multi-Speaker Story Studio</button>
+      <button class="tab-btn" onclick="switchTab('clone')">🧬 Instant Voice Clone</button>
+      <button class="tab-btn" onclick="switchTab('voices')">📚 Voice Library</button>
+    </div>
+
+    <!-- TAB 1: Speech Studio -->
+    <div id="tab-tts" class="studio-grid">
+      <!-- Left Column: Editor & Audio Controls -->
+      <div class="card">
+        <div class="card-title">
+          <span>Script & Speech Prompt</span>
+          <div class="pill-presets">
+            <button class="pill-btn" onclick="setPreset('movie')">Movie Trailer</button>
+            <button class="pill-btn" onclick="setPreset('doc')">Documentary</button>
+            <button class="pill-btn" onclick="setPreset('podcast')">Podcast Host</button>
+          </div>
+        </div>
+
+        <textarea id="tts-text" placeholder="Type or paste any text to synthesize with the selected voice..."></textarea>
+        
+        <!-- Emotion & Expression Quick-Insert Bar -->
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Expressions:</span>
+          <button type="button" class="pill-btn" onclick="insertTag('[laugh]')">😄 [laugh]</button>
+          <button type="button" class="pill-btn" onclick="insertTag('[sigh]')">😮‍💨 [sigh]</button>
+          <button type="button" class="pill-btn" onclick="insertTag('[whisper]')">🤫 [whisper]</button>
+          <button type="button" class="pill-btn" onclick="insertTag('[gasp]')">😲 [gasp]</button>
+          <button type="button" class="pill-btn" onclick="insertTag('[cough]')">🤧 [cough]</button>
+          <button type="button" class="pill-btn" onclick="insertTag('[pause]')">⏸️ [pause]</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-sub);">
+          <span id="char-count">0 characters</span>
+          <span>Click any expression above to inject natural human nuance</span>
+        </div>
+
+        <!-- Studio Audio FX -->
+        <div>
+          <label style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 8px;">
+            Studio Audio FX Filter (Out-of-the-Box DSP)
+          </label>
+          <div class="fx-grid">
+            <div class="fx-chip active" id="fx-none" onclick="setFx('none')">✨ Clean / Dry</div>
+            <div class="fx-chip" id="fx-reverb" onclick="setFx('reverb')">🏛️ Concert Hall</div>
+            <div class="fx-chip" id="fx-bass_boost" onclick="setFx('bass_boost')">🔊 Deep Bass</div>
+            <div class="fx-chip" id="fx-radio" onclick="setFx('radio')">📻 Vintage Radio</div>
+            <div class="fx-chip" id="fx-telephone" onclick="setFx('telephone')">📞 Telephone</div>
+            <div class="fx-chip" id="fx-cyberpunk" onclick="setFx('cyberpunk')">🤖 Cyberpunk Echo</div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-row">
+          <div class="control-group">
+            <div class="control-label">
+              <span>Speech Speed</span>
+              <span id="rate-label">1.0x</span>
+            </div>
+            <input type="range" id="param-rate" min="-50" max="50" value="0" oninput="updateLabels()">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Voice Pitch</span>
+              <span id="pitch-label">Default (0Hz)</span>
+            </div>
+            <input type="range" id="param-pitch" min="-40" max="40" value="0" oninput="updateLabels()">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Volume Gain</span>
+              <span id="vol-label">100%</span>
+            </div>
+            <input type="range" id="param-vol" min="-50" max="50" value="0" oninput="updateLabels()">
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-generate" onclick="generateSpeech()">
+          <span>⚡ Generate Speech</span>
+        </button>
+
+        <!-- Output Box -->
+        <div class="output-card" id="output-box" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 700; font-size: 0.9rem;" id="out-meta">Audio Ready</span>
+            <a id="out-download" href="#" download="synthesized_speech.mp3" style="color: var(--accent-blue); font-size: 0.85rem; text-decoration: none; font-weight: 600;">⬇️ Download Audio</a>
+          </div>
+          <audio id="audio-player" class="audio-player" controls></audio>
+        </div>
+      </div>
+
+      <!-- Right Column: Voice Selector Sidebar -->
+      <div class="card">
+        <div class="card-title">
+          <span>Active Speaker</span>
+        </div>
+
+        <div class="selected-voice-preview">
+          <div class="voice-avatar" id="active-avatar">🎙️</div>
+          <div class="voice-info">
+            <div class="voice-title" id="active-name">Marcus - Deep Documentary</div>
+            <div class="voice-desc" id="active-desc">Cinematic & Narration • Ultra-Human Pro</div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <input type="text" id="voice-search" class="voice-search" placeholder="Search voices, actors, accents..." oninput="filterVoices()">
+          
+          <div class="voice-filter-tabs">
+            <button class="v-filter-btn active" id="filter-all" onclick="setFilter('all')">🇺🇸 USA All</button>
+            <button class="v-filter-btn" id="filter-human" onclick="setFilter('human')">🌟 Pro Human (USA)</button>
+            <button class="v-filter-btn" id="filter-cloned" onclick="setFilter('cloned')">🧬 Cloned (<span id="cloned-badge">0</span>)</button>
+          </div>
+        </div>
+
+        <div class="voice-list" id="voice-list">
+          <div style="text-align: center; color: var(--text-sub); font-size: 0.85rem; padding: 20px;">Loading voices...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Multi-Speaker Story Studio -->
+    <div id="tab-dialogue" class="card hidden">
+      <div class="card-title">
+        <span>🎭 Multi-Speaker Story Studio (Podcasts & Audiobooks)</span>
+        <button class="pill-btn" onclick="addDialogueLine()">+ Add Speaker Line</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Assign different cloned and human voices to individual lines. The studio automatically generates each actor and stitches them into a cohesive conversation master track!
+      </p>
+
+      <div id="dialogue-lines-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+        <!-- Dialogue lines injected here -->
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+        <button class="btn-primary" id="btn-render-dialogue" onclick="renderDialogue()">
+          <span>🎬 Render Multi-Speaker Track</span>
+        </button>
+      </div>
+
+      <div class="output-card" id="dialogue-output-box" style="display: none; margin-top: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 700; font-size: 0.9rem;" id="dialogue-meta">Master Conversation Rendered</span>
+          <a id="dialogue-download" href="#" download="dialogue_story.wav" style="color: var(--accent-blue); font-size: 0.85rem; text-decoration: none; font-weight: 600;">⬇️ Download Full Dialogue</a>
+        </div>
+        <audio id="dialogue-player" class="audio-player" controls></audio>
+      </div>
+    </div>
+
+    <!-- TAB 3: Voice Cloning -->
+    <div id="tab-clone" class="card hidden">
+      <div class="card-title">
+        <span>Instant Zero-Shot Voice Cloning</span>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Conditioned via Fish Audio s2.1-pro</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Voice Name</label>
+            <input type="text" id="clone-name" class="voice-search" placeholder="e.g. Morgan Freeman, My Voice, Joe Rogan">
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="font-size: 0.85rem; color: var(--text-muted);">Sample Transcript (Conditions acoustic match)</label>
+              <button type="button" id="btn-auto-transcribe" onclick="autoTranscribeSample()" class="pill-btn" style="color: var(--accent-blue); border-color: var(--accent-blue);">
+                ✨ Auto-Transcribe (1-Click)
+              </button>
+            </div>
+            <input type="text" id="clone-transcript" class="voice-search" placeholder="Click 'Auto-Transcribe' or type words spoken in sample...">
+          </div>
+
+          <div>
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Description / Notes</label>
+            <input type="text" id="clone-desc" class="voice-search" placeholder="Warm, deep narrative tone">
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="clone-box" onclick="document.getElementById('clone-file').click()">
+            <div style="font-size: 2.2rem; margin-bottom: 8px;">🎙️</div>
+            <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 4px;" id="file-title">Click to upload voice audio sample</div>
+            <div style="font-size: 0.78rem; color: var(--text-sub);">WAV, MP3, M4A, OGG (5 - 30 seconds recommended)</div>
+            <input type="file" id="clone-file" class="file-input" accept="audio/*" onchange="onSampleSelected(event)">
+          </div>
+          
+          <audio id="sample-preview-audio" class="audio-player hidden" controls></audio>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="btn-clone" onclick="submitClone()">
+        <span>🧬 Create Cloned Voice Model</span>
+      </button>
+
+      <!-- Cloned Voices Management with DELETE feature -->
+      <div style="margin-top: 24px; border-top: 1px solid var(--card-border); padding-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <span style="font-weight: 700; font-size: 1rem;">Your Cloned Voices (Manage & Delete)</span>
+          <span style="font-size: 0.8rem; color: var(--text-sub);">Deleting purges both metadata and stored audio</span>
+        </div>
+        <div id="cloned-voices-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
+          <!-- Cloned voices cards rendered here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Voice Library -->
+    <div id="tab-voices" class="card hidden">
+      <div class="card-title">
+        <span>Global Voice Catalog</span>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Curated Human Voices & 400+ Neural Models</span>
+      </div>
+      <input type="text" id="lib-search" class="voice-search" placeholder="Search voices by name, accent, tag..." oninput="renderLibrary()">
+      <div id="library-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; max-height: 550px; overflow-y: auto;">
+        <!-- Library cards -->
+      </div>
+    </div>
+  </main>
+
+  <div id="toast">
+    <span id="toast-text">Notification message</span>
+  </div>
+
+  <script>
+    const state = {
+      humanProVoices: [],
+      allVoices: [],
+      clonedVoices: [],
+      currentVoice: 'fish_7c0a85bc08f3454c9e29dba716eef0ab',
+      currentVoiceName: 'Marcus - Deep Documentary',
+      voiceFilter: 'all',
+      selectedSampleFile: null,
+      currentFx: 'none',
+      dialogueLines: [
+        { speaker: 'fish_7c0a85bc08f3454c9e29dba716eef0ab', text: 'Welcome to BIG G\'S Voice Cloner Pro. Today we are showcasing next-generation voice intelligence.' },
+        { speaker: 'fish_15471e9a59e74a90a87f52ec52a9a21e', text: 'That sounds incredible Marcus! The voices sound shockingly human with natural breathing and expressions.' }
+      ]
+    };
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices').forEach(el => el.classList.add('hidden'));
+
+      if (tabId === 'tts') {
+        document.getElementById('tab-tts').classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+      } else if (tabId === 'dialogue') {
+        document.getElementById('tab-dialogue').classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+        renderDialogueEditor();
+      } else if (tabId === 'clone') {
+        document.getElementById('tab-clone').classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+        fetchClonedVoices();
+      } else if (tabId === 'voices') {
+        document.getElementById('tab-voices').classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+        renderLibrary();
+      }
+    }
+
+    function setFx(fx) {
+      state.currentFx = fx;
+      document.querySelectorAll('.fx-chip').forEach(c => c.classList.remove('active'));
+      const activeEl = document.getElementById(`fx-${fx}`);
+      if (activeEl) activeEl.classList.add('active');
+      showToast(`Audio FX active: ${fx.replace('_', ' ').toUpperCase()}`);
+    }
+
+    function insertTag(tag) {
+      const area = document.getElementById('tts-text');
+      const start = area.selectionStart;
+      const end = area.selectionEnd;
+      const text = area.value;
+      area.value = text.substring(0, start) + tag + ' ' + text.substring(end);
+      area.focus();
+      area.selectionStart = area.selectionEnd = start + tag.length + 1;
+      updateCharCount();
+    }
+
+    function setPreset(type) {
+      const texts = {
+        movie: "In a world shattered by silence, one voice emerged from the shadows. Prepare yourself for the ultimate revelation.",
+        doc: "Deep in the Pacific Mariana Trench, the water pressure exceeds one thousand atmospheres. Here, life does not merely survive—it thrives in complete and total darkness.",
+        podcast: "Welcome back everyone! Today we're diving straight into why open AI architectures are completely reshaping the future of media."
+      };
+      const el = document.getElementById('tts-text');
+      el.value = texts[type] || '';
+      updateCharCount();
+    }
+
+    function updateCharCount() {
+      const count = document.getElementById('tts-text').value.length;
+      document.getElementById('char-count').textContent = `${count} characters`;
+    }
+    document.getElementById('tts-text').addEventListener('input', updateCharCount);
+
+    function updateLabels() {
+      const r = document.getElementById('param-rate').value;
+      const p = document.getElementById('param-pitch').value;
+      const v = document.getElementById('param-vol').value;
+
+      const rateMult = 1.0 + (r / 100);
+      document.getElementById('rate-label').textContent = `${rateMult.toFixed(2)}x (${r >= 0 ? '+' : ''}${r}%)`;
+      document.getElementById('pitch-label').textContent = `${p >= 0 ? '+' : ''}${p}Hz`;
+      document.getElementById('vol-label').textContent = `${100 + parseInt(v)}%`;
+    }
+
+    function showToast(text, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = text;
+      t.style.borderColor = isError ? 'var(--danger)' : 'var(--success)';
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3500);
+    }
+
+    async function init() {
+      try {
+        const confRes = await fetch('/api/config');
+        const conf = await confRes.json();
+        if (conf.fish_audio_configured) {
+          document.getElementById('engine-text').textContent = `Fish Audio (${conf.fish_model}) Ready`;
+        }
+
+        const [vRes, cRes] = await Promise.all([
+          fetch('/api/models'),
+          fetch('/api/cloned-voices')
+        ]);
+        const vData = await vRes.json();
+        state.allVoices = vData.voices || [];
+        state.humanProVoices = vData.human_pro_voices || [];
+        state.clonedVoices = await cRes.json();
+        document.getElementById('cloned-badge').textContent = state.clonedVoices.length;
+        
+        renderVoiceSidebar();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function fetchClonedVoices() {
+      try {
+        const res = await fetch('/api/cloned-voices');
+        state.clonedVoices = await res.json();
+        document.getElementById('cloned-badge').textContent = state.clonedVoices.length;
+        renderClonedVoicesCards();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function setFilter(filter) {
+      state.voiceFilter = filter;
+      document.querySelectorAll('.v-filter-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(`filter-${filter}`).classList.add('active');
+      renderVoiceSidebar();
+    }
+
+    function filterVoices() {
+      renderVoiceSidebar();
+    }
+
+    function renderVoiceSidebar() {
+      const listEl = document.getElementById('voice-list');
+      const search = (document.getElementById('voice-search').value || '').toLowerCase();
+      let list = [];
+
+      if (state.voiceFilter === 'human') {
+        list = state.humanProVoices.map(h => ({ ...h, isHumanPro: true }));
+      } else if (state.voiceFilter === 'cloned') {
+        list = state.clonedVoices.map(c => ({ id: c.id, name: c.name + ' (Cloned)', desc: c.description, isCloned: true }));
+      } else {
+        // English USA focused: Pro Human American voices first, then custom clones, then USA Neural models
+        const humanMapped = state.humanProVoices.map(h => ({ ...h, isHumanPro: true }));
+        const clonedMapped = state.clonedVoices.map(c => ({ id: c.id, name: c.name + ' (Cloned)', desc: c.description, isCloned: true }));
+        const neuralMapped = state.allVoices.filter(v => v.locale === 'en-US').map(v => ({ id: v.id, name: v.name, desc: `${v.locale} • ${v.gender}`, isCloned: false }));
+        list = [...humanMapped, ...clonedMapped, ...neuralMapped];
+      }
+
+      if (search) {
+        list = list.filter(v => (v.name || '').toLowerCase().includes(search) || (v.desc || v.description || '').toLowerCase().includes(search));
+      }
+
+      if (list.length === 0) {
+        listEl.innerHTML = `<div style="text-align: center; color: var(--text-sub); font-size: 0.85rem; padding: 20px;">No matching voices</div>`;
+        return;
+      }
+
+      listEl.innerHTML = list.slice(0, 60).map(v => {
+        const isSel = v.id === state.currentVoice;
+        const icon = v.avatar || (v.isCloned ? '🧬' : '🎙️');
+        const descText = v.description || v.desc || '';
+        return `
+          <div class="voice-item ${isSel ? 'selected' : ''}" onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")}', '${descText.replace(/'/g, "\\'")}', '${icon}')">
+            <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+              <span style="font-size: 1.2rem;">${icon}</span>
+              <div style="overflow: hidden;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${v.name}</span>
+                  ${v.isHumanPro ? '<span class="badge-pro">PRO HUMAN</span>' : ''}
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${descText}</div>
+              </div>
+            </div>
+            ${isSel ? '<span style="color: var(--accent-blue); font-weight: 700;">✓</span>' : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectVoice(id, name, desc, avatar = '🎙️') {
+      state.currentVoice = id;
+      state.currentVoiceName = name;
+      document.getElementById('active-avatar').textContent = avatar;
+      document.getElementById('active-name').textContent = name;
+      document.getElementById('active-desc').textContent = desc;
+      renderVoiceSidebar();
+      showToast(`Selected voice: ${name}`);
+    }
+
+    // Single Generation
+    async function generateSpeech() {
+      const text = document.getElementById('tts-text').value.trim();
+      if (!text) {
+        showToast('Please type some text to speak!', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-generate');
+      btn.disabled = true;
+      btn.innerHTML = `<span>⏳ Synthesizing Voice...</span>`;
+
+      const r = document.getElementById('param-rate').value;
+      const p = document.getElementById('param-pitch').value;
+      const v = document.getElementById('param-vol').value;
+
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: text,
+            voice: state.currentVoice,
+            rate: `${r >= 0 ? '+' : ''}${r}%`,
+            pitch: `${p >= 0 ? '+' : ''}${p}Hz`,
+            volume: `${v >= 0 ? '+' : ''}${v}%`,
+            dsp_effect: state.currentFx
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Synthesis failed');
+
+        const player = document.getElementById('audio-player');
+        player.src = data.audio_url;
+        document.getElementById('out-download').href = data.audio_url;
+        document.getElementById('out-meta').textContent = `Generated with ${data.engine_used.replace(/_/g, ' ').toUpperCase()}`;
+        document.getElementById('output-box').style.display = 'flex';
+        player.play();
+        showToast('Speech generated successfully!');
+      } catch (err) {
+        showToast('Error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>⚡ Generate Speech</span>`;
+      }
+    }
+
+    // Auto Transcribe reference audio
+    async function autoTranscribeSample() {
+      if (!state.selectedSampleFile) {
+        showToast('Please upload an audio sample first!', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-auto-transcribe');
+      btn.disabled = true;
+      btn.textContent = '⏳ Transcribing...';
+
+      const fd = new FormData();
+      fd.append('audio_file', state.selectedSampleFile);
+
+      try {
+        const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success && data.transcript) {
+          document.getElementById('clone-transcript').value = data.transcript;
+          showToast('Transcript extracted successfully!');
+        } else {
+          showToast(data.message || 'Could not auto-transcribe. You can type it manually.', true);
+        }
+      } catch (err) {
+        showToast('Transcription error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ Auto-Transcribe (1-Click)';
+      }
+    }
+
+    function onSampleSelected(e) {
+      const file = e.target.files[0];
+      if (file) {
+        state.selectedSampleFile = file;
+        document.getElementById('file-title').textContent = `Selected: ${file.name}`;
+        const player = document.getElementById('sample-preview-audio');
+        player.src = URL.createObjectURL(file);
+        player.classList.remove('hidden');
+      }
+    }
+
+    async function submitClone() {
+      const name = document.getElementById('clone-name').value.trim();
+      const transcript = document.getElementById('clone-transcript').value.trim();
+      const desc = document.getElementById('clone-desc').value.trim();
+
+      if (!name) {
+        showToast('Please name your voice model!', true);
+        return;
+      }
+      if (!state.selectedSampleFile) {
+        showToast('Please upload an audio sample!', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-clone');
+      btn.disabled = true;
+      btn.innerHTML = `<span>🧬 Analyzing & Cloning Voice...</span>`;
+
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('reference_text', transcript);
+      fd.append('description', desc);
+      fd.append('audio_file', state.selectedSampleFile);
+
+      try {
+        const res = await fetch('/api/clone', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Cloning failed');
+
+        showToast(`Voice "${name}" cloned successfully!`);
+        await fetchClonedVoices();
+        selectVoice(data.voice.id, data.voice.name + ' (Cloned)', data.voice.description, '🧬');
+        document.querySelectorAll('.tab-btn')[0].click();
+      } catch (err) {
+        showToast('Error cloning voice: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>🧬 Create Cloned Voice Model</span>`;
+      }
+    }
+
+    function renderClonedVoicesCards() {
+      const container = document.getElementById('cloned-voices-list');
+      if (state.clonedVoices.length === 0) {
+        container.innerHTML = `<div style="color: var(--text-sub); font-size: 0.85rem;">No cloned voices yet. Upload an audio sample above to create one!</div>`;
+        return;
+      }
+
+      container.innerHTML = state.clonedVoices.map(v => `
+        <div style="background: #0f1626; border: 1px solid #1c2638; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 700; font-size: 0.95rem;">${v.name}</span>
+            <button onclick="deleteVoice('${v.id}')" title="Permanently Delete Voice" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
+              🗑️ Delete
+            </button>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);">${v.description}</div>
+          <div style="display: flex; gap: 6px; font-size: 0.7rem; color: var(--text-sub);">
+            <span>Pitch: ${v.profile?.estimated_pitch_hz || 180}Hz</span> •
+            <span>Duration: ${v.profile?.duration || 0}s</span>
+          </div>
+          <button onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")} (Cloned)', '${v.description.replace(/'/g, "\\'")}', '🧬'); document.querySelectorAll('.tab-btn')[0].click();" style="margin-top: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid var(--accent-indigo); color: #fff; padding: 6px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+            Use in Studio
+          </button>
+        </div>
+      `).join('');
+    }
+
+    async function deleteVoice(id) {
+      if (!confirm('Are you sure you want to permanently delete this cloned voice?')) return;
+      try {
+        const res = await fetch(`/api/cloned-voices/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || 'Voice deleted successfully!');
+          await fetchClonedVoices();
+          renderVoiceSidebar();
+        } else {
+          showToast(data.message || 'Failed to delete voice', true);
+        }
+      } catch (e) {
+        showToast('Error deleting: ' + e.message, true);
+      }
+    }
+
+    // Multi-Speaker Story Studio Logic
+    function getAvailableSpeakerOptions(selectedId) {
+      const all = [
+        ...state.humanProVoices.map(h => ({ id: h.id, name: h.name })),
+        ...state.clonedVoices.map(c => ({ id: c.id, name: c.name + ' (Cloned)' }))
+      ];
+      return all.map(v => `<option value="${v.id}" ${v.id === selectedId ? 'selected' : ''}>${v.name}</option>`).join('');
+    }
+
+    function renderDialogueEditor() {
+      const container = document.getElementById('dialogue-lines-container');
+      container.innerHTML = state.dialogueLines.map((line, idx) => `
+        <div class="dialogue-bubble">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; font-size: 0.82rem; color: var(--accent-blue);">Actor #${idx + 1}</span>
+              <select onchange="updateDialogueSpeaker(${idx}, this.value)" style="background: #192336; border: 1px solid #2b3952; color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 0.82rem;">
+                ${getAvailableSpeakerOptions(line.speaker)}
+              </select>
+            </div>
+            ${state.dialogueLines.length > 1 ? `<button onclick="removeDialogueLine(${idx})" style="background: transparent; border: none; color: var(--danger); cursor: pointer; font-size: 0.85rem;">✕ Remove</button>` : ''}
+          </div>
+          <input type="text" value="${line.text.replace(/"/g, '&quot;')}" oninput="updateDialogueText(${idx}, this.value)" class="voice-search" placeholder="Type dialogue for this character...">
+        </div>
+      `).join('');
+    }
+
+    function addDialogueLine() {
+      const defaultSpeaker = state.humanProVoices[1]?.id || state.humanProVoices[0]?.id || state.currentVoice;
+      state.dialogueLines.push({ speaker: defaultSpeaker, text: '' });
+      renderDialogueEditor();
+    }
+
+    function removeDialogueLine(idx) {
+      state.dialogueLines.splice(idx, 1);
+      renderDialogueEditor();
+    }
+
+    function updateDialogueSpeaker(idx, voiceId) {
+      state.dialogueLines[idx].speaker = voiceId;
+    }
+
+    function updateDialogueText(idx, val) {
+      state.dialogueLines[idx].text = val;
+    }
+
+    async function renderDialogue() {
+      const validLines = state.dialogueLines.filter(l => l.text.trim().length > 0);
+      if (validLines.length === 0) {
+        showToast('Please type dialogue lines for your actors!', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-render-dialogue');
+      btn.disabled = true;
+      btn.innerHTML = `<span>⏳ Synthesizing & Merging Actors...</span>`;
+
+      try {
+        const payload = {
+          lines: validLines.map(l => ({
+            speaker: l.speaker,
+            speaker_name: 'Actor',
+            text: l.text
+          }))
+        };
+
+        const res = await fetch('/api/dialogue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Dialogue render failed');
+
+        const player = document.getElementById('dialogue-player');
+        player.src = data.audio_url;
+        document.getElementById('dialogue-download').href = data.audio_url;
+        document.getElementById('dialogue-meta').textContent = `Master Track Rendered (${data.lines_rendered} lines with natural pauses)`;
+        document.getElementById('dialogue-output-box').style.display = 'flex';
+        player.play();
+        showToast('Story dialogue rendered successfully!');
+      } catch (err) {
+        showToast('Dialogue error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>🎬 Render Multi-Speaker Track</span>`;
+      }
+    }
+
+    function renderLibrary() {
+      const container = document.getElementById('library-grid');
+      const search = (document.getElementById('lib-search').value || '').toLowerCase();
+      
+      const combined = [
+        ...state.humanProVoices.map(h => ({ ...h, isHumanPro: true })),
+        ...state.allVoices
+      ];
+
+      const filtered = combined.filter(v => (v.name || '').toLowerCase().includes(search) || (v.locale || '').toLowerCase().includes(search));
+
+      container.innerHTML = filtered.slice(0, 100).map(v => `
+        <div style="background: #0f1626; border: 1px solid #1c2638; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.88rem; font-weight: 700;">${v.name}</span>
+              ${v.isHumanPro ? '<span class="badge-pro">PRO HUMAN</span>' : ''}
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-sub); margin-top: 4px;">${v.locale || 'en-US'} • ${v.gender || 'Human'}</div>
+          </div>
+          <button onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")}', '${(v.description || v.desc || '').replace(/'/g, "\\'")}', '${v.avatar || '🎙️'}'); document.querySelectorAll('.tab-btn')[0].click();" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 6px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+            Select
+          </button>
+        </div>
+      `).join('');
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
