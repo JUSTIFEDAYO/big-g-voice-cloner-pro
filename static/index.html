@@ -518,6 +518,121 @@
       display: none !important;
     }
 
+    /* Mobile Responsiveness & Touch Optimization */
+    @media (max-width: 768px) {
+      header {
+        padding: 10px 16px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .status-badge {
+        align-self: flex-start;
+        font-size: 0.72rem;
+        padding: 4px 10px;
+      }
+
+      main {
+        padding: 12px;
+        gap: 14px;
+      }
+
+      .tabs-bar {
+        display: flex;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+        scrollbar-width: none;
+      }
+      .tabs-bar::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tab-btn {
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        flex-shrink: 0;
+      }
+
+      .studio-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .card {
+        padding: 14px;
+        border-radius: 12px;
+        gap: 14px;
+      }
+
+      .card-title {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .pill-presets {
+        width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 4px;
+      }
+
+      textarea {
+        height: 120px;
+        font-size: 0.9rem;
+        padding: 10px;
+      }
+
+      .controls-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .control-group {
+        padding: 10px 12px;
+      }
+
+      .fx-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+
+      .fx-chip {
+        font-size: 0.7rem;
+        padding: 6px 4px;
+      }
+
+      .btn-primary {
+        padding: 12px 18px;
+        font-size: 0.95rem;
+      }
+
+      .voice-list {
+        max-height: 280px;
+      }
+
+      #tab-clone > div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+        gap: 14px !important;
+      }
+
+      .clone-box {
+        padding: 20px 14px;
+      }
+
+      #toast {
+        left: 14px;
+        right: 14px;
+        bottom: 14px;
+        font-size: 0.82rem;
+        padding: 10px 14px;
+      }
+    }
+
     #toast {
       position: fixed;
       bottom: 24px;
