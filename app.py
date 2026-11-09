@@ -60,6 +60,33 @@ app.add_middleware(
 def get_fish_api_key():
     return os.getenv("FISH_AUDIO_API_KEY", "").strip()
 
+def get_studio_credentials():
+    return {
+        "username": os.getenv("STUDIO_USERNAME", "bigg").strip(),
+        "access_key": os.getenv("STUDIO_ACCESS_KEY", "bigg2026").strip()
+    }
+
+class LoginRequest(BaseModel):
+    username: str
+    access_key: str
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest):
+    creds = get_studio_credentials()
+    if req.username.strip().lower() == creds["username"].lower() and req.access_key.strip() == creds["access_key"]:
+        # Return secure session token
+        token = f"token_{uuid.uuid4().hex}"
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "username": creds["username"],
+            "message": "Welcome back to BIG G'S VOICE CLONER PRO!"
+        })
+    return JSONResponse({
+        "success": False, 
+        "message": "Invalid username or studio access key."
+    }, status_code=401)
+
 def get_db():
     try:
         with open(VOICES_DB_FILE, "r", encoding="utf-8") as f:
