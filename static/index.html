@@ -678,38 +678,79 @@
         <span class="status-dot"></span>
         <span id="engine-text">Fish Audio s2.1-pro Ready</span>
       </div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-muted); background: #162032; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--card-border);">
+        <span>👤 <strong id="header-username" style="color: #fff;">User</strong></span>
+        <span id="header-role-badge" class="badge-free" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border-color: #3b82f6;">USER</span>
+      </div>
       <button onclick="logout()" class="pill-btn" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">
         🔒 Logout
       </button>
     </div>
   </header>
 
-  <!-- LOGIN PORTAL OVERLAY -->
+  <!-- AUTHENTICATION PORTAL (Login & Sign Up Tabs) -->
   <div id="login-overlay" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: radial-gradient(circle at top, #141b2d 0%, #080c14 100%);">
-    <div class="card" style="max-width: 420px; width: 100%; border-radius: 16px; border: 1px solid rgba(99, 102, 241, 0.3); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);">
-      <div style="text-align: center; margin-bottom: 8px;">
-        <div class="brand-logo" style="margin: 0 auto 14px; width: 52px; height: 52px; font-size: 26px;">🎙️</div>
-        <h2 style="font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; color: #fff;">BIG G'S VOICE CLONER PRO</h2>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">Studio Access Authentication</p>
+    <div class="card" style="max-width: 440px; width: 100%; border-radius: 16px; border: 1px solid rgba(99, 102, 241, 0.3); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);">
+      <div style="text-align: center; margin-bottom: 4px;">
+        <div class="brand-logo" style="margin: 0 auto 12px; width: 50px; height: 50px; font-size: 24px;">🎙️</div>
+        <h2 style="font-size: 1.25rem; font-weight: 800; letter-spacing: -0.5px; color: #fff;">BIG G'S VOICE CLONER PRO</h2>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">Next-Gen Voice Intelligence & Studio</p>
       </div>
 
-      <form id="login-form" onsubmit="handleLogin(event)" style="display: flex; flex-direction: column; gap: 14px;">
+      <!-- Auth Toggle Tabs -->
+      <div style="display: flex; background: #0b0f19; padding: 4px; border-radius: 8px; border: 1px solid var(--card-border); margin: 10px 0;">
+        <button type="button" id="tab-btn-login" onclick="toggleAuthMode('login')" style="flex: 1; padding: 8px; font-size: 0.85rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; background: var(--accent-blue); color: #fff;">
+          Sign In
+        </button>
+        <button type="button" id="tab-btn-signup" onclick="toggleAuthMode('signup')" style="flex: 1; padding: 8px; font-size: 0.85rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">
+          Create Account
+        </button>
+      </div>
+
+      <!-- Sign In Form -->
+      <form id="form-login" onsubmit="handleLogin(event)" style="display: flex; flex-direction: column; gap: 14px;">
         <div>
-          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Username</label>
-          <input type="text" id="login-user" required class="voice-search" placeholder="Enter username" style="font-size: 0.92rem; padding: 12px 14px;">
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Username or Email</label>
+          <input type="text" id="login-user" required class="voice-search" placeholder="admin or your username" style="font-size: 0.92rem; padding: 12px 14px;">
         </div>
 
         <div>
-          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Studio Access Key</label>
-          <input type="password" id="login-pass" required class="voice-search" placeholder="Enter access key" style="font-size: 0.92rem; padding: 12px 14px;">
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Password</label>
+          <input type="password" id="login-pass" required class="voice-search" placeholder="••••••••" style="font-size: 0.92rem; padding: 12px 14px;">
         </div>
 
         <button type="submit" id="btn-login-submit" class="btn-primary" style="margin-top: 6px; padding: 14px;">
-          <span>🚀 Unlock Studio</span>
+          <span>🚀 Sign In to Studio</span>
+        </button>
+        
+        <div style="text-align: center; font-size: 0.75rem; color: var(--text-sub);">
+          Default Admin Account: <strong>admin</strong> | Password: <strong>admin2026</strong>
+        </div>
+      </form>
+
+      <!-- Sign Up Form -->
+      <form id="form-signup" onsubmit="handleSignup(event)" class="hidden" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Choose Username</label>
+          <input type="text" id="signup-user" required minlength="3" class="voice-search" placeholder="e.g. voicecreator" style="font-size: 0.92rem; padding: 12px 14px;">
+        </div>
+
+        <div>
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Email Address</label>
+          <input type="email" id="signup-email" required class="voice-search" placeholder="name@domain.com" style="font-size: 0.92rem; padding: 12px 14px;">
+        </div>
+
+        <div>
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Create Password</label>
+          <input type="password" id="signup-pass" required minlength="4" class="voice-search" placeholder="••••••••" style="font-size: 0.92rem; padding: 12px 14px;">
+        </div>
+
+        <button type="submit" id="btn-signup-submit" class="btn-primary" style="margin-top: 6px; padding: 14px;">
+          <span>✨ Create Free Account</span>
         </button>
 
-        <div style="text-align: center; font-size: 0.75rem; color: var(--text-sub); margin-top: 4px;">
-          Protected access • Powered by Fish Audio
+        <div style="text-align: center; font-size: 0.75rem; color: var(--text-sub);">
+          Includes 10,000 free synthesis credits!
         </div>
       </form>
     </div>
@@ -722,6 +763,7 @@
       <button class="tab-btn" onclick="switchTab('dialogue')">🎭 Multi-Speaker Story Studio</button>
       <button class="tab-btn" onclick="switchTab('clone')">🧬 Instant Voice Clone</button>
       <button class="tab-btn" onclick="switchTab('voices')">📚 Voice Library</button>
+      <button class="tab-btn hidden" id="tab-btn-admin" onclick="switchTab('admin')">👑 Admin Control Panel</button>
     </div>
 
     <!-- TAB 1: Speech Studio -->
@@ -939,6 +981,56 @@
         <!-- Library cards -->
       </div>
     </div>
+
+    <!-- TAB 5: Admin Control Panel (Only for admin) -->
+    <div id="tab-admin" class="card hidden">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>👑 Admin Master Control Panel</span>
+          <span class="badge-pro">Owner Level</span>
+        </div>
+        <button class="pill-btn" onclick="fetchAdminData()">🔄 Refresh Stats</button>
+      </div>
+
+      <!-- Admin Stats Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+        <div class="control-group">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Registered Users</span>
+          <span id="stat-total-users" style="font-size: 1.6rem; font-weight: 800; color: #fff;">0</span>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Cloned Voices Stored</span>
+          <span id="stat-clones" style="font-size: 1.6rem; font-weight: 800; color: #818cf8;">0</span>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">AI Inference Model</span>
+          <span id="stat-engine" style="font-size: 1rem; font-weight: 700; color: #34d399;">s2.1-pro-free</span>
+        </div>
+      </div>
+
+      <!-- Users Management Table -->
+      <div>
+        <div style="font-weight: 700; font-size: 0.95rem; margin: 10px 0;">User Account Management</div>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--card-border); color: var(--text-muted);">
+                <th style="padding: 10px 8px;">ID</th>
+                <th style="padding: 10px 8px;">Username</th>
+                <th style="padding: 10px 8px;">Email</th>
+                <th style="padding: 10px 8px;">Role</th>
+                <th style="padding: 10px 8px;">Credits</th>
+                <th style="padding: 10px 8px;">Status</th>
+                <th style="padding: 10px 8px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-users-tbody">
+              <!-- Admin user rows rendered here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 
   <div id="toast">
@@ -963,7 +1055,7 @@
 
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices, #tab-admin').forEach(el => el.classList.add('hidden'));
 
       if (tabId === 'tts') {
         document.getElementById('tab-tts').classList.remove('hidden');
@@ -980,6 +1072,10 @@
         document.getElementById('tab-voices').classList.remove('hidden');
         event.currentTarget.classList.add('active');
         renderLibrary();
+      } else if (tabId === 'admin') {
+        document.getElementById('tab-admin').classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+        fetchAdminData();
       }
     }
 
@@ -1434,13 +1530,54 @@
       `).join('');
     }
 
+    // Toggle Auth Form (Sign In vs Sign Up)
+    function toggleAuthMode(mode) {
+      const btnLogin = document.getElementById('tab-btn-login');
+      const btnSignup = document.getElementById('tab-btn-signup');
+      const formLogin = document.getElementById('form-login');
+      const formSignup = document.getElementById('form-signup');
+
+      if (mode === 'signup') {
+        btnLogin.style.background = 'transparent';
+        btnLogin.style.color = 'var(--text-muted)';
+        btnSignup.style.background = 'var(--accent-blue)';
+        btnSignup.style.color = '#fff';
+        formLogin.classList.add('hidden');
+        formSignup.classList.remove('hidden');
+      } else {
+        btnSignup.style.background = 'transparent';
+        btnSignup.style.color = 'var(--text-muted)';
+        btnLogin.style.background = 'var(--accent-blue)';
+        btnLogin.style.color = '#fff';
+        formSignup.classList.add('hidden');
+        formLogin.classList.remove('hidden');
+      }
+    }
+
     // Authentication & Access Control
     function checkAuth() {
       const token = localStorage.getItem('bigg_auth_token');
-      if (token) {
+      const userStr = localStorage.getItem('bigg_auth_user_obj');
+      
+      if (token && userStr) {
+        const user = JSON.parse(userStr);
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-header').classList.remove('hidden');
         document.getElementById('main-content').classList.remove('hidden');
+        
+        document.getElementById('header-username').textContent = user.username;
+        const roleBadge = document.getElementById('header-role-badge');
+        roleBadge.textContent = user.role.toUpperCase();
+        
+        if (user.role === 'admin') {
+          roleBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+          roleBadge.style.color = '#f59e0b';
+          roleBadge.style.borderColor = '#f59e0b';
+          document.getElementById('tab-btn-admin').classList.remove('hidden');
+        } else {
+          document.getElementById('tab-btn-admin').classList.add('hidden');
+        }
+
         init();
       } else {
         document.getElementById('login-overlay').style.display = 'flex';
@@ -1462,30 +1599,148 @@
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: user, access_key: pass })
+          body: JSON.stringify({ username: user, password: pass })
         });
         const data = await res.json();
-        if (data.success && data.token) {
+        if (res.ok && data.success && data.token) {
           localStorage.setItem('bigg_auth_token', data.token);
-          localStorage.setItem('bigg_auth_user', data.username);
-          showToast(`Welcome, ${data.username}! Access Granted.`);
+          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(data.user));
+          showToast(`Welcome back, ${data.user.username}!`);
           checkAuth();
         } else {
-          showToast(data.message || 'Invalid login credentials', true);
+          showToast(data.detail || data.message || 'Invalid login credentials', true);
         }
       } catch (err) {
         showToast('Login server error: ' + err.message, true);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<span>🚀 Unlock Studio</span>`;
+        btn.innerHTML = `<span>🚀 Sign In to Studio</span>`;
+      }
+    }
+
+    async function handleSignup(e) {
+      e.preventDefault();
+      const user = document.getElementById('signup-user').value.trim();
+      const email = document.getElementById('signup-email').value.trim();
+      const pass = document.getElementById('signup-pass').value.trim();
+      const btn = document.getElementById('btn-signup-submit');
+
+      btn.disabled = true;
+      btn.innerHTML = `<span>⏳ Creating Account...</span>`;
+
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: user, email: email, password: pass })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.token) {
+          localStorage.setItem('bigg_auth_token', data.token);
+          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(data.user));
+          showToast(`Account created! Welcome, ${data.user.username}!`);
+          checkAuth();
+        } else {
+          showToast(data.detail || data.message || 'Signup failed', true);
+        }
+      } catch (err) {
+        showToast('Signup error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>✨ Create Free Account</span>`;
       }
     }
 
     function logout() {
       localStorage.removeItem('bigg_auth_token');
-      localStorage.removeItem('bigg_auth_user');
+      localStorage.removeItem('bigg_auth_user_obj');
       showToast('Logged out of studio.');
       checkAuth();
+    }
+
+    // Admin Panel Actions
+    async function fetchAdminData() {
+      try {
+        const res = await fetch('/api/admin/users');
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('stat-total-users').textContent = data.stats.total_users;
+          document.getElementById('stat-clones').textContent = data.stats.cloned_voices_count;
+          document.getElementById('stat-engine').textContent = data.stats.engine;
+
+          const tbody = document.getElementById('admin-users-tbody');
+          tbody.innerHTML = data.users.map(u => `
+            <tr style="border-bottom: 1px solid var(--card-border);">
+              <td style="padding: 10px 8px; color: var(--text-sub);">#${u.id}</td>
+              <td style="padding: 10px 8px; font-weight: 700; color: #fff;">${u.username}</td>
+              <td style="padding: 10px 8px; color: var(--text-muted);">${u.email}</td>
+              <td style="padding: 10px 8px;">
+                <span class="${u.role === 'admin' ? 'badge-pro' : 'badge-free'}">${u.role.toUpperCase()}</span>
+              </td>
+              <td style="padding: 10px 8px; font-weight: 600; color: #818cf8;">${u.credits.toLocaleString()}</td>
+              <td style="padding: 10px 8px;">
+                <span style="color: ${u.status === 'banned' ? '#f87171' : '#34d399'}; font-weight: 600;">${u.status.toUpperCase()}</span>
+              </td>
+              <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
+                <button onclick="editUserCredits(${u.id}, ${u.credits})" class="pill-btn" style="color: var(--accent-blue);">+ Credits</button>
+                ${u.role !== 'admin' ? `
+                  <button onclick="toggleUserBan(${u.id}, '${u.status === 'banned' ? 'active' : 'banned'}')" class="pill-btn" style="color: ${u.status === 'banned' ? '#34d399' : '#f87171'};">
+                    ${u.status === 'banned' ? 'Unban' : 'Suspend'}
+                  </button>
+                  <button onclick="deleteUserAccount(${u.id})" class="pill-btn" style="color: #ef4444;">Delete</button>
+                ` : '<span style="font-size: 0.72rem; color: var(--text-sub);">Protected</span>'}
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Admin data fetch error: ' + err.message, true);
+      }
+    }
+
+    async function editUserCredits(userId, current) {
+      const val = prompt('Enter new credit balance for this user:', current);
+      if (val === null) return;
+      const num = parseInt(val);
+      if (isNaN(num)) return alert('Please enter a valid number');
+
+      try {
+        const res = await fetch('/api/admin/users/credits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, credits: num })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Credits updated');
+        fetchAdminData();
+      } catch (e) {
+        showToast('Failed to update credits', true);
+      }
+    }
+
+    async function toggleUserBan(userId, targetStatus) {
+      const fd = new FormData();
+      fd.append('status', targetStatus);
+      try {
+        const res = await fetch(`/api/admin/users/${userId}/status`, { method: 'POST', body: fd });
+        const data = await res.json();
+        showToast(data.message);
+        fetchAdminData();
+      } catch (e) {
+        showToast('Failed to change status', true);
+      }
+    }
+
+    async function deleteUserAccount(userId) {
+      if (!confirm('Are you sure you want to permanently delete this user?')) return;
+      try {
+        const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        const data = await res.json();
+        showToast(data.message);
+        fetchAdminData();
+      } catch (e) {
+        showToast('Failed to delete user', true);
+      }
     }
 
     window.addEventListener('DOMContentLoaded', checkAuth);

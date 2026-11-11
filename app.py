@@ -60,32 +60,169 @@ app.add_middleware(
 def get_fish_api_key():
     return os.getenv("FISH_AUDIO_API_KEY", "").strip()
 
-def get_studio_credentials():
-    return {
-        "username": os.getenv("STUDIO_USERNAME", "bigg").strip(),
-        "access_key": os.getenv("STUDIO_ACCESS_KEY", "bigg2026").strip()
-    }
+import sqlite3
+import hashlib
+
+DB_FILE = os.path.join(VOICES_DIR, "studio.db")
+
+def init_user_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        credits INTEGER DEFAULT 10000,
+        status TEXT DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    # Seed default Admin account if not existing
+    c.execute("SELECT id FROM users WHERE username = 'admin'")
+    if not c.fetchone():
+        admin_pass_hash = hashlib.sha256("admin2026".encode()).hexdigest()
+        c.execute("INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, ?)",
+                  ("admin", "admin@biggstudio.com", admin_pass_hash, "admin", 999999, "active"))
+    conn.commit()
+    conn.close()
+
+init_user_db()
+
+def hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.strip().encode()).hexdigest()
+
+class SignupRequest(BaseModel):
+    username: str
+    email: str
+    password: str
 
 class LoginRequest(BaseModel):
     username: str
-    access_key: str
+    password: str
 
-@app.post("/api/auth/login")
-def auth_login(req: LoginRequest):
-    creds = get_studio_credentials()
-    if req.username.strip().lower() == creds["username"].lower() and req.access_key.strip() == creds["access_key"]:
-        # Return secure session token
+class UpdateUserCreditsRequest(BaseModel):
+    user_id: int
+    credits: int
+
+@app.post("/api/auth/signup")
+def auth_signup(req: SignupRequest):
+    if len(req.username.strip()) < 3 or len(req.password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="Username (min 3 chars) and password (min 4 chars) required.")
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO users (username, email, password_hash, role, credits) VALUES (?, ?, ?, 'user', 10000)",
+                  (req.username.strip().lower(), req.email.strip().lower(), hash_pw(req.password)))
+        conn.commit()
+        user_id = c.lastrowid
         token = f"token_{uuid.uuid4().hex}"
         return JSONResponse({
             "success": True,
             "token": token,
-            "username": creds["username"],
-            "message": "Welcome back to BIG G'S VOICE CLONER PRO!"
+            "user": {
+                "id": user_id,
+                "username": req.username.strip().lower(),
+                "email": req.email.strip().lower(),
+                "role": "user",
+                "credits": 10000
+            },
+            "message": "Account created successfully!"
         })
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Username or email is already registered.")
+    finally:
+        conn.close()
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest):
+    u = req.username.strip().lower()
+    p_hash = hash_pw(req.password)
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role, credits, status FROM users WHERE (username = ? OR email = ?) AND password_hash = ?", (u, u, p_hash))
+    user = c.fetchone()
+    conn.close()
+    
+    if user:
+        if user[5] == "banned":
+            raise HTTPException(status_code=403, detail="Your account has been suspended by the administrator.")
+        token = f"token_{uuid.uuid4().hex}"
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "role": user[3],
+                "credits": user[4]
+            },
+            "message": f"Welcome back, {user[1]}!"
+        })
+    raise HTTPException(status_code=401, detail="Invalid username/email or password.")
+
+# ADMIN PANEL API
+@app.get("/api/admin/users")
+def admin_get_users():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role, credits, status, created_at FROM users ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    
+    users = [{
+        "id": r[0],
+        "username": r[1],
+        "email": r[2],
+        "role": r[3],
+        "credits": r[4],
+        "status": r[5],
+        "created_at": r[6]
+    } for r in rows]
+    
+    # Also fetch storage & generation stats
+    db = get_db()
     return JSONResponse({
-        "success": False, 
-        "message": "Invalid username or studio access key."
-    }, status_code=401)
+        "success": True,
+        "users": users,
+        "stats": {
+            "total_users": len(users),
+            "cloned_voices_count": len(db),
+            "engine": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
+        }
+    })
+
+@app.post("/api/admin/users/{user_id}/status")
+def admin_toggle_user_status(user_id: int, status: str = Form(...)):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": f"User status updated to {status}"})
+
+@app.post("/api/admin/users/credits")
+def admin_set_user_credits(req: UpdateUserCreditsRequest):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET credits = ? WHERE id = ?", (req.credits, req.user_id))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": "Credits updated successfully!"})
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(user_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (user_id,))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": "User deleted."})
 
 def get_db():
     try:
