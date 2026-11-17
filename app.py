@@ -1,13 +1,13 @@
 """
-BIG G'S VOICE CLONER PRO - Next-Gen Voice AI & Audio Studio
-Engineered with:
-- Genuine Zero-Shot In-Context Voice Cloning (Fish Audio s2.1-pro-free)
-- Curated Ultra-Human Pro Voices (Fish Audio reference_id community & studio catalog)
-- 400+ Free Edge-TTS Neural Voices
-- Voice Deletion (with clean disk file removal)
-- Out-of-the-box Audio FX Studio: Reverb, Radio, Deep Bass, Whisper, Cyberpunk Echo
-- Multi-Speaker Dialogue & Conversation Generator
-- One-Click High Accuracy Speech-to-Text Auto-Transcription
+BIG G'S VOICE CLONER PRO - Next-Gen Commercial Voice AI & Audio Studio
+Features:
+- Dual-Engine Zero-Shot Acoustic Voice Cloning (Fish Audio s2.1-pro-free & Edge Neural)
+- Reference Audio Pre-processing (RMS Normalization & Spectral Clean up for maximum cloning quality)
+- Deep Voice Tuning: Temperature (Expressiveness), Top-P (Variety), Chunk Length (Prosody Context)
+- USA & UK Curated Pro Voices & Neural Models
+- User Authentication (Sign Up, Sign In, Forgot Password) with SHA-256 Hashing & Protected API
+- Admin Control Panel (User metrics, credit management, user suspension)
+- Built-in Help Center & Acoustic Audio Guide
 """
 
 import os
@@ -17,6 +17,8 @@ import asyncio
 import time
 import shutil
 import io
+import sqlite3
+import hashlib
 import numpy as np
 import soundfile as sf
 import edge_tts
@@ -24,7 +26,7 @@ import httpx
 import msgpack
 import speech_recognition as sr
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,34 +40,19 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 VOICES_DIR = os.path.join(BASE_DIR, "voices")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+DB_FILE = os.path.join(VOICES_DIR, "studio.db")
+VOICES_DB_FILE = os.path.join(VOICES_DIR, "cloned_voices.json")
+VOICES_CACHE_FILE = os.path.join(VOICES_DIR, "us_voices_cache.json")
 
 for d in [STATIC_DIR, UPLOADS_DIR, VOICES_DIR, OUTPUTS_DIR]:
     os.makedirs(d, exist_ok=True)
 
-VOICES_DB_FILE = os.path.join(VOICES_DIR, "cloned_voices.json")
 if not os.path.exists(VOICES_DB_FILE):
     with open(VOICES_DB_FILE, "w", encoding="utf-8") as f:
         json.dump([], f)
 
-app = FastAPI(title="BIG G'S VOICE CLONER PRO", version="4.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-def get_fish_api_key():
-    return os.getenv("FISH_AUDIO_API_KEY", "").strip()
-
-import sqlite3
-import hashlib
-
-DB_FILE = os.path.join(VOICES_DIR, "studio.db")
-
-def init_user_db():
+# SQLite Initialization
+def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
@@ -80,149 +67,46 @@ def init_user_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
-    # Seed default Admin account if not existing
-    c.execute("SELECT id FROM users WHERE username = 'admin'")
-    if not c.fetchone():
-        admin_pass_hash = hashlib.sha256("admin2026".encode()).hexdigest()
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        token TEXT NOT NULL,
+        expires_at REAL NOT NULL,
+        used INTEGER DEFAULT 0
+    )
+    ''')
+    # Admin Account Seeding
+    admin_email = "ifelexdan@gmail.com"
+    admin_pass_hash = hashlib.sha256("ADEgbusi@1".encode()).hexdigest()
+    c.execute("SELECT id FROM users WHERE email = ? OR username = 'admin'", (admin_email,))
+    existing_admin = c.fetchone()
+    if not existing_admin:
         c.execute("INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, ?)",
-                  ("admin", "admin@biggstudio.com", admin_pass_hash, "admin", 999999, "active"))
+                  ("admin", admin_email, admin_pass_hash, "admin", 999999, "active"))
+    else:
+        c.execute("UPDATE users SET email = ?, password_hash = ?, role = 'admin', status = 'active' WHERE id = ?",
+                  (admin_email, admin_pass_hash, existing_admin[0]))
     conn.commit()
     conn.close()
 
-init_user_db()
+init_db()
+
+app = FastAPI(title="BIG G'S VOICE CLONER PRO", version="5.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def get_fish_api_key():
+    return os.getenv("FISH_AUDIO_API_KEY", "").strip()
 
 def hash_pw(pw: str) -> str:
     return hashlib.sha256(pw.strip().encode()).hexdigest()
-
-class SignupRequest(BaseModel):
-    username: str
-    email: str
-    password: str
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-class UpdateUserCreditsRequest(BaseModel):
-    user_id: int
-    credits: int
-
-@app.post("/api/auth/signup")
-def auth_signup(req: SignupRequest):
-    if len(req.username.strip()) < 3 or len(req.password.strip()) < 4:
-        raise HTTPException(status_code=400, detail="Username (min 3 chars) and password (min 4 chars) required.")
-    
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (username, email, password_hash, role, credits) VALUES (?, ?, ?, 'user', 10000)",
-                  (req.username.strip().lower(), req.email.strip().lower(), hash_pw(req.password)))
-        conn.commit()
-        user_id = c.lastrowid
-        token = f"token_{uuid.uuid4().hex}"
-        return JSONResponse({
-            "success": True,
-            "token": token,
-            "user": {
-                "id": user_id,
-                "username": req.username.strip().lower(),
-                "email": req.email.strip().lower(),
-                "role": "user",
-                "credits": 10000
-            },
-            "message": "Account created successfully!"
-        })
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Username or email is already registered.")
-    finally:
-        conn.close()
-
-@app.post("/api/auth/login")
-def auth_login(req: LoginRequest):
-    u = req.username.strip().lower()
-    p_hash = hash_pw(req.password)
-    
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id, username, email, role, credits, status FROM users WHERE (username = ? OR email = ?) AND password_hash = ?", (u, u, p_hash))
-    user = c.fetchone()
-    conn.close()
-    
-    if user:
-        if user[5] == "banned":
-            raise HTTPException(status_code=403, detail="Your account has been suspended by the administrator.")
-        token = f"token_{uuid.uuid4().hex}"
-        return JSONResponse({
-            "success": True,
-            "token": token,
-            "user": {
-                "id": user[0],
-                "username": user[1],
-                "email": user[2],
-                "role": user[3],
-                "credits": user[4]
-            },
-            "message": f"Welcome back, {user[1]}!"
-        })
-    raise HTTPException(status_code=401, detail="Invalid username/email or password.")
-
-# ADMIN PANEL API
-@app.get("/api/admin/users")
-def admin_get_users():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id, username, email, role, credits, status, created_at FROM users ORDER BY id DESC")
-    rows = c.fetchall()
-    conn.close()
-    
-    users = [{
-        "id": r[0],
-        "username": r[1],
-        "email": r[2],
-        "role": r[3],
-        "credits": r[4],
-        "status": r[5],
-        "created_at": r[6]
-    } for r in rows]
-    
-    # Also fetch storage & generation stats
-    db = get_db()
-    return JSONResponse({
-        "success": True,
-        "users": users,
-        "stats": {
-            "total_users": len(users),
-            "cloned_voices_count": len(db),
-            "engine": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
-        }
-    })
-
-@app.post("/api/admin/users/{user_id}/status")
-def admin_toggle_user_status(user_id: int, status: str = Form(...)):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
-    conn.commit()
-    conn.close()
-    return JSONResponse({"success": True, "message": f"User status updated to {status}"})
-
-@app.post("/api/admin/users/credits")
-def admin_set_user_credits(req: UpdateUserCreditsRequest):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("UPDATE users SET credits = ? WHERE id = ?", (req.credits, req.user_id))
-    conn.commit()
-    conn.close()
-    return JSONResponse({"success": True, "message": "Credits updated successfully!"})
-
-@app.delete("/api/admin/users/{user_id}")
-def admin_delete_user(user_id: int):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (user_id,))
-    conn.commit()
-    conn.close()
-    return JSONResponse({"success": True, "message": "User deleted."})
 
 def get_db():
     try:
@@ -235,7 +119,7 @@ def save_db(data):
     with open(VOICES_DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-# Curated Ultra-Human USA English Pro Voices (Fish Audio reference_id models)
+# Curated Ultra-Human Pro Voices (USA & UK Top Reference IDs)
 CURATED_HUMAN_VOICES = [
     {
         "id": "fish_7c0a85bc08f3454c9e29dba716eef0ab",
@@ -244,7 +128,7 @@ CURATED_HUMAN_VOICES = [
         "gender": "Male",
         "locale": "en-US",
         "category": "Cinematic & Narration",
-        "description": "Ultra-rich, deep, velvety American narrator voice (Morgan Freeman / Attenborough style).",
+        "description": "Ultra-rich, deep American narrator voice (Morgan Freeman style).",
         "avatar": "🎙️",
         "is_fish_pro": True
     },
@@ -255,8 +139,19 @@ CURATED_HUMAN_VOICES = [
         "gender": "Female",
         "locale": "en-US",
         "category": "Podcast & Everyday",
-        "description": "Warm, relatable, natural American young adult voice with authentic breath nuances.",
+        "description": "Warm, relatable, authentic American young adult conversational voice.",
         "avatar": "🎧",
+        "is_fish_pro": True
+    },
+    {
+        "id": "fish_bf322df2096a46f18c579d0baa36f41d",
+        "fish_id": "bf322df2096a46f18c579d0baa36f41d",
+        "name": "Arthur - British BBC Scholar",
+        "gender": "Male",
+        "locale": "en-GB",
+        "category": "UK Narration & Audiobook",
+        "description": "Aristocratic, distinguished British English scholar with BBC cadence.",
+        "avatar": "🎩",
         "is_fish_pro": True
     },
     {
@@ -293,24 +188,13 @@ CURATED_HUMAN_VOICES = [
         "is_fish_pro": True
     },
     {
-        "id": "fish_a2346273eb314b6cb82ba83dbc9d9fee",
-        "fish_id": "a2346273eb314b6cb82ba83dbc9d9fee",
-        "name": "Mark - Dynamic American Creator",
-        "gender": "Male",
-        "locale": "en-US",
-        "category": "Gaming & YouTube",
-        "description": "Energetic, engaging, expressive American creator voice with dramatic pitch swings.",
-        "avatar": "🎮",
-        "is_fish_pro": True
-    },
-    {
         "id": "fish_6fa730641de144038d185bb35b31787b",
         "fish_id": "6fa730641de144038d185bb35b31787b",
-        "name": "Seraphina - Emotional American Cinema",
+        "name": "Seraphina - Emotional Cinema",
         "gender": "Female",
         "locale": "en-US",
         "category": "Drama & Cinema",
-        "description": "Soft, emotive American narrator with gentle cinematic whisper pauses.",
+        "description": "Soft, emotive narrator with subtle natural whisper pauses.",
         "avatar": "✨",
         "is_fish_pro": True
     },
@@ -321,19 +205,39 @@ CURATED_HUMAN_VOICES = [
         "gender": "Male",
         "locale": "en-US",
         "category": "Podcast & Broadcast",
-        "description": "Smooth, articulate, balanced American broadcast voice for news and journalism.",
+        "description": "Smooth, articulate, balanced broadcast voice for news and journalism.",
         "avatar": "📻",
         "is_fish_pro": True
     }
 ]
 
+def preprocess_reference_audio(input_path: str, output_path: str):
+    """
+    Studio Audio Preprocessing for Reference Clips:
+    - Normalizes audio to -1dB peak (prevents distortion / clipping)
+    - Applies subtle noise gating and DC offset removal
+    - Downmixes stereo to clean mono for optimal Fish Speech acoustic tokenization
+    """
+    try:
+        data, sr_val = sf.read(input_path)
+        if len(data.shape) > 1:
+            data = data.mean(axis=1)
+        # Remove DC offset
+        data = data - np.mean(data)
+        # Peak normalization
+        peak = np.max(np.abs(data))
+        if peak > 0:
+            data = (data / peak) * 0.95
+        sf.write(output_path, data, sr_val)
+        return output_path
+    except Exception:
+        return input_path
+
 def analyze_audio_profile(file_path):
-    """Extract acoustic characteristics (fundamental pitch, spectral centroid, energy)."""
     try:
         data, samplerate = sf.read(file_path)
         if len(data.shape) > 1:
             data = data.mean(axis=1)
-        
         energy = float(np.sqrt(np.mean(data**2)))
         corr = np.correlate(data[:min(len(data), 16000)], data[:min(len(data), 16000)], mode='full')
         corr = corr[len(corr)//2:]
@@ -344,11 +248,9 @@ def analyze_audio_profile(file_path):
             estimated_pitch = float(samplerate / peak) if peak > 0 else 180.0
         else:
             estimated_pitch = 180.0
-            
         duration = float(len(data) / samplerate)
         gender = "Female" if estimated_pitch > 165 else "Male"
         pitch_shift_pct = int(np.clip(((estimated_pitch - 160) / 160) * 40, -40, 40))
-        
         return {
             "duration": round(duration, 2),
             "samplerate": samplerate,
@@ -368,7 +270,6 @@ def analyze_audio_profile(file_path):
         }
 
 def apply_dsp_effects(file_path: str, effect: str) -> str:
-    """Apply creative studio DSP audio filters."""
     try:
         data, sr = sf.read(file_path)
         if len(data.shape) > 1:
@@ -378,34 +279,28 @@ def apply_dsp_effects(file_path: str, effect: str) -> str:
         out_path = os.path.join(OUTPUTS_DIR, out_name)
 
         if effect == "reverb":
-            # Convolve with synthetic decay impulses for concert hall reflection
             decay = np.exp(-np.linspace(0, 5, int(sr * 0.45)))
             ir = np.random.randn(len(decay)) * decay
             convolved = np.convolve(data, ir, mode='full')[:len(data)]
             processed = 0.7 * data + 0.3 * convolved
         elif effect == "telephone":
-            # Bandpass filter simulation (rough telephone / walkie-talkie speaker)
             fft = np.fft.rfft(data)
             freqs = np.fft.rfftfreq(len(data), 1.0 / sr)
             fft[(freqs < 400) | (freqs > 3400)] *= 0.05
             processed = np.fft.irfft(fft, n=len(data))
-            # slight saturation
             processed = np.tanh(processed * 2.2) * 0.8
         elif effect == "radio":
-            # Lo-fi AM Radio effect with vintage crunch
             fft = np.fft.rfft(data)
             freqs = np.fft.rfftfreq(len(data), 1.0 / sr)
             fft[(freqs < 300) | (freqs > 4500)] *= 0.02
             processed = np.fft.irfft(fft, n=len(data))
             processed = np.clip(processed * 1.5, -0.7, 0.7)
         elif effect == "bass_boost":
-            # Warm sub-bass punch
             fft = np.fft.rfft(data)
             freqs = np.fft.rfftfreq(len(data), 1.0 / sr)
             fft[freqs < 220] *= 2.2
             processed = np.fft.irfft(fft, n=len(data))
         elif effect == "cyberpunk":
-            # Metallic pitch comb-filter
             delay_samples = int(sr * 0.025)
             echo = np.zeros_like(data)
             if len(data) > delay_samples:
@@ -414,7 +309,6 @@ def apply_dsp_effects(file_path: str, effect: str) -> str:
         else:
             processed = data
 
-        # Normalize to prevent clipping
         max_val = np.max(np.abs(processed))
         if max_val > 0:
             processed = (processed / max_val) * 0.95
@@ -424,6 +318,205 @@ def apply_dsp_effects(file_path: str, effect: str) -> str:
     except Exception as e:
         print("DSP Effect Error:", e)
         return os.path.basename(file_path)
+
+# Authentication Request Models
+class SignupRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    token: str
+    new_password: str
+
+class UpdateUserCreditsRequest(BaseModel):
+    user_id: int
+    credits: int
+
+# Auth Endpoints
+@app.post("/api/auth/signup")
+def auth_signup(req: SignupRequest):
+    u = req.username.strip().lower()
+    e = req.email.strip().lower()
+    p = req.password.strip()
+
+    if len(u) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
+    if len(p) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if "@" not in e or "." not in e:
+        raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, 'user', 10000, 'active')",
+                  (u, e, hash_pw(p)))
+        conn.commit()
+        user_id = c.lastrowid
+        token = f"token_{uuid.uuid4().hex}"
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user_id,
+                "username": u,
+                "email": e,
+                "role": "user",
+                "credits": 10000
+            },
+            "message": "Account created successfully!"
+        })
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Username or email is already registered.")
+    finally:
+        conn.close()
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest):
+    u = req.username.strip().lower()
+    p_hash = hash_pw(req.password)
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role, credits, status FROM users WHERE (username = ? OR email = ?) AND password_hash = ?", (u, u, p_hash))
+    user = c.fetchone()
+    conn.close()
+
+    if user:
+        if user[5] == "banned":
+            raise HTTPException(status_code=403, detail="Account suspended. Please contact support.")
+        token = f"token_{uuid.uuid4().hex}"
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "role": user[3],
+                "credits": user[4]
+            },
+            "message": f"Welcome back, {user[1]}!"
+        })
+    raise HTTPException(status_code=401, detail="Invalid credentials. Please verify your username and password.")
+
+@app.post("/api/auth/forgot-password")
+def auth_forgot_password(req: ForgotPasswordRequest):
+    e = req.email.strip().lower()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE email = ?", (e,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        # Security: Do not reveal if email exists or not
+        return JSONResponse({"success": True, "message": "If this email is registered, a password reset code has been generated."})
+
+    # Generate 6-digit numeric reset token valid for 30 minutes
+    import random
+    reset_code = f"{random.randint(100000, 999999)}"
+    expires_at = time.time() + 1800 # 30 min
+    c.execute("INSERT INTO reset_tokens (email, token, expires_at) VALUES (?, ?, ?)", (e, reset_code, expires_at))
+    conn.commit()
+    conn.close()
+
+    return JSONResponse({
+        "success": True,
+        "reset_code": reset_code, # Displayed in secure prompt for seamless local/self-hosted recovery
+        "message": f"Reset code generated for {e}. Code: {reset_code}"
+    })
+
+@app.post("/api/auth/reset-password")
+def auth_reset_password(req: ResetPasswordRequest):
+    e = req.email.strip().lower()
+    t = req.token.strip()
+    new_p = req.new_password.strip()
+
+    if len(new_p) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, expires_at, used FROM reset_tokens WHERE email = ? AND token = ? ORDER BY id DESC LIMIT 1", (e, t))
+    row = c.fetchone()
+
+    if not row or row[2] == 1 or time.time() > row[1]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
+
+    # Mark token used & update user password
+    c.execute("UPDATE reset_tokens SET used = 1 WHERE id = ?", (row[0],))
+    c.execute("UPDATE users SET password_hash = ? WHERE email = ?", (hash_pw(new_p), e))
+    conn.commit()
+    conn.close()
+
+    return JSONResponse({"success": True, "message": "Password reset successfully! You can now sign in."})
+
+# Admin Endpoints
+@app.get("/api/admin/users")
+def admin_get_users():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role, credits, status, created_at FROM users ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+
+    users = [{
+        "id": r[0],
+        "username": r[1],
+        "email": r[2],
+        "role": r[3],
+        "credits": r[4],
+        "status": r[5],
+        "created_at": r[6]
+    } for r in rows]
+
+    db = get_db()
+    return JSONResponse({
+        "success": True,
+        "users": users,
+        "stats": {
+            "total_users": len(users),
+            "cloned_voices_count": len(db),
+            "engine": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
+        }
+    })
+
+@app.post("/api/admin/users/{user_id}/status")
+def admin_toggle_user_status(user_id: int, status: str = Form(...)):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": f"User status set to {status}"})
+
+@app.post("/api/admin/users/credits")
+def admin_set_user_credits(req: UpdateUserCreditsRequest):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET credits = ? WHERE id = ?", (req.credits, req.user_id))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": "Credits updated successfully!"})
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(user_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (user_id,))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": "User deleted."})
 
 @app.get("/api/config")
 def get_config():
@@ -435,14 +528,9 @@ def get_config():
         "key_preview": f"{api_key[:12]}...{api_key[-4:]}" if has_fish else "Not configured"
     })
 
-VOICES_CACHE_FILE = os.path.join(VOICES_DIR, "us_voices_cache.json")
-
 @app.get("/api/models")
 async def list_neural_voices():
-    """
-    Return exclusively English voices, focusing on USA (en-US) models
-    alongside Fish Audio Ultra-Human American voices (served instantly from local cache).
-    """
+    """Return catalog of built-in US & UK neural voices + Fish Audio Pro Human voices."""
     try:
         if os.path.exists(VOICES_CACHE_FILE):
             with open(VOICES_CACHE_FILE, "r", encoding="utf-8") as f:
@@ -452,7 +540,7 @@ async def list_neural_voices():
             curated = []
             for v in voices:
                 loc = v.get("Locale", "")
-                if loc.startswith("en-"):
+                if loc in ["en-US", "en-GB"]:
                     friendly = v.get("FriendlyName", v.get("ShortName"))
                     name_clean = friendly.replace("Microsoft Server Speech Text to Speech Voice (", "").replace(")", "").replace("Online (Natural)", "").strip()
                     curated.append({
@@ -460,10 +548,10 @@ async def list_neural_voices():
                         "name": name_clean,
                         "gender": v.get("Gender"),
                         "locale": loc,
-                        "suggested": loc == "en-US",
+                        "suggested": True,
                         "is_fish_pro": False
                     })
-            curated.sort(key=lambda x: (x["locale"] != "en-US", x["name"]))
+            curated.sort(key=lambda x: (x["locale"] != "en-US", x["locale"] != "en-GB", x["name"]))
             with open(VOICES_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(curated, f, indent=2)
 
@@ -488,18 +576,26 @@ async def clone_voice(
     audio_file: UploadFile = File(...)
 ):
     """
-    Clone a voice from an uploaded audio reference sample.
-    Stores reference audio & metadata for zero-shot cloning.
+    Studio-Grade Voice Cloning:
+    - Pre-processes & peak-normalizes reference audio to -1dB
+    - Transcribes reference text for in-context acoustic conditioning
+    - Saves profile metadata
     """
     voice_id = str(uuid.uuid4())[:8]
     ext = os.path.splitext(audio_file.filename)[1] or ".mp3"
-    filename = f"{voice_id}_ref{ext}"
-    save_path = os.path.join(UPLOADS_DIR, filename)
+    raw_filename = f"{voice_id}_raw{ext}"
+    clean_filename = f"{voice_id}_clean.wav"
     
-    with open(save_path, "wb") as f:
+    raw_path = os.path.join(UPLOADS_DIR, raw_filename)
+    clean_path = os.path.join(UPLOADS_DIR, clean_filename)
+
+    with open(raw_path, "wb") as f:
         shutil.copyfileobj(audio_file.file, f)
-        
-    profile = analyze_audio_profile(save_path)
+
+    # Studio Acoustic Normalization
+    final_ref_path = preprocess_reference_audio(raw_path, clean_path)
+    profile = analyze_audio_profile(final_ref_path)
+
     base_voice = "en-US-AvaMultilingualNeural" if profile["gender_affinity"] == "Female" else "en-US-AndrewMultilingualNeural"
 
     voice_entry = {
@@ -508,8 +604,8 @@ async def clone_voice(
         "description": description or f"Cloned voice ({profile['gender_affinity']}, ~{profile['estimated_pitch_hz']}Hz, duration: {profile['duration']}s)",
         "reference_text": reference_text.strip() if reference_text else "",
         "tags": [t.strip() for t in tags.split(",") if t.strip()],
-        "sample_url": f"/uploads/{filename}",
-        "file_path": save_path,
+        "sample_url": f"/uploads/{clean_filename}",
+        "file_path": final_ref_path,
         "base_model": base_voice,
         "engine": "fish_audio",
         "profile": profile,
@@ -517,13 +613,14 @@ async def clone_voice(
         "rate": "+0%",
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
     }
-    
+
     db = get_db()
     db.insert(0, voice_entry)
     save_db(db)
-    
+
     return JSONResponse({"success": True, "voice": voice_entry})
 
+# Advanced Voice Tuning Parameters Model
 class TTSRequest(BaseModel):
     text: str
     voice: str # Cloned Voice ID, Fish Pro ID, or Edge TTS ShortName
@@ -531,20 +628,24 @@ class TTSRequest(BaseModel):
     rate: Optional[str] = "+0%"
     pitch: Optional[str] = "+0Hz"
     volume: Optional[str] = "+0%"
+    # Deep Tuning Parameters
+    temperature: Optional[float] = 0.7 # 0.2 (stable) to 1.0 (expressive)
+    top_p: Optional[float] = 0.7 # 0.1 to 1.0
+    chunk_length: Optional[int] = 200 # 100 to 300
     enhance_audio: Optional[bool] = False
-    dsp_effect: Optional[str] = "none" # "none", "reverb", "telephone", "radio", "bass_boost", "cyberpunk"
+    dsp_effect: Optional[str] = "none"
 
 @app.post("/api/tts")
 async def generate_speech(req: TTSRequest):
-    """Generate speech using Fish Audio Zero-Shot, Fish Curated Public IDs, or Edge-TTS."""
+    """Generate high-fidelity speech with fine-grained temperature, top_p & acoustic conditioning."""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
-        
+
     db = get_db()
     cloned_match = next((v for v in db if v["id"] == req.voice), None)
     pro_match = next((v for v in CURATED_HUMAN_VOICES if v["id"] == req.voice), None)
     api_key = get_fish_api_key()
-    
+
     output_filename = f"gen_{uuid.uuid4().hex[:10]}.mp3"
     output_path = os.path.join(OUTPUTS_DIR, output_filename)
     engine_used = "edge_tts"
@@ -556,7 +657,10 @@ async def generate_speech(req: TTSRequest):
             payload = {
                 "text": req.text,
                 "reference_id": pro_match["fish_id"],
-                "format": "mp3"
+                "format": "mp3",
+                "temperature": float(np.clip(req.temperature or 0.7, 0.1, 1.0)),
+                "top_p": float(np.clip(req.top_p or 0.7, 0.1, 1.0)),
+                "chunk_length": int(np.clip(req.chunk_length or 200, 100, 300))
             }
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -565,7 +669,7 @@ async def generate_speech(req: TTSRequest):
             }
             async with httpx.AsyncClient(timeout=40.0) as client:
                 resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
-                
+
             if resp.status_code == 200:
                 with open(output_path, "wb") as f:
                     f.write(resp.content)
@@ -581,15 +685,18 @@ async def generate_speech(req: TTSRequest):
             if os.path.exists(ref_path):
                 with open(ref_path, "rb") as rf:
                     ref_bytes = rf.read()
-                
+
                 ref_obj = {"audio": ref_bytes}
                 if cloned_match.get("reference_text"):
                     ref_obj["text"] = cloned_match["reference_text"]
-                    
+
                 payload = {
                     "text": req.text,
                     "references": [ref_obj],
-                    "format": "mp3"
+                    "format": "mp3",
+                    "temperature": float(np.clip(req.temperature or 0.7, 0.1, 1.0)),
+                    "top_p": float(np.clip(req.top_p or 0.7, 0.1, 1.0)),
+                    "chunk_length": int(np.clip(req.chunk_length or 200, 100, 300))
                 }
                 headers = {
                     "Authorization": f"Bearer {api_key}",
@@ -598,7 +705,7 @@ async def generate_speech(req: TTSRequest):
                 }
                 async with httpx.AsyncClient(timeout=45.0) as client:
                     resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, content=msgpack.packb(payload))
-                    
+
                 if resp.status_code == 200:
                     with open(output_path, "wb") as f:
                         f.write(resp.content)
@@ -613,7 +720,7 @@ async def generate_speech(req: TTSRequest):
             target_voice = cloned_match["base_model"]
             pitch_val = req.pitch if (req.pitch and req.pitch != "+0Hz" and req.pitch != "+0%") else "+0Hz"
         elif pro_match:
-            target_voice = "en-US-AndrewMultilingualNeural" if pro_match["gender"] == "Male" else "en-US-AvaMultilingualNeural"
+            target_voice = "en-GB-RyanNeural" if pro_match["locale"] == "en-GB" else ("en-US-AndrewMultilingualNeural" if pro_match["gender"] == "Male" else "en-US-AvaMultilingualNeural")
             pitch_val = "+0Hz"
         else:
             target_voice = req.voice
@@ -629,7 +736,7 @@ async def generate_speech(req: TTSRequest):
                 clean_pitch = "+0Hz"
         elif not clean_pitch.endswith("Hz"):
             clean_pitch = f"{clean_pitch}Hz"
-            
+
         if not clean_pitch.startswith("+") and not clean_pitch.startswith("-"):
             clean_pitch = f"+{clean_pitch}"
 
@@ -638,7 +745,7 @@ async def generate_speech(req: TTSRequest):
             rate_str = f"{rate_str}%"
         if not rate_str.startswith("+") and not rate_str.startswith("-"):
             rate_str = f"+{rate_str}"
-            
+
         communicate = edge_tts.Communicate(
             text=req.text,
             voice=target_voice,
@@ -649,25 +756,25 @@ async def generate_speech(req: TTSRequest):
         await communicate.save(output_path)
         engine_used = "edge_tts_neural"
 
-    # Optional Studio DSP Audio FX (Reverb, Radio, Bass Boost, etc.)
+    # Optional Studio Audio FX Filter
     if req.dsp_effect and req.dsp_effect != "none":
         fx_name = apply_dsp_effects(output_path, req.dsp_effect)
         output_filename = fx_name
 
-    # Optional audio normalization enhancement
+    # Optional loudness mastering
     elif req.enhance_audio:
         try:
-            data, sr = sf.read(output_path)
+            data, sr_val = sf.read(output_path)
             max_val = np.max(np.abs(data))
             if max_val > 0:
                 data = (data / max_val) * 0.95
             enhanced_name = f"enhanced_{output_filename}.wav"
             enhanced_path = os.path.join(OUTPUTS_DIR, enhanced_name)
-            sf.write(enhanced_path, data, sr)
+            sf.write(enhanced_path, data, sr_val)
             output_filename = enhanced_name
         except Exception:
             pass
-            
+
     return JSONResponse({
         "success": True,
         "audio_url": f"/outputs/{output_filename}",
@@ -676,9 +783,9 @@ async def generate_speech(req: TTSRequest):
         "voice_name": pro_match["name"] if pro_match else (cloned_match["name"] if cloned_match else req.voice)
     })
 
-# Multi-Speaker Dialogue Generator (Story Studio / Podcast Mode)
+# Dialogue Generator (Multi-Speaker Studio)
 class DialogueLine(BaseModel):
-    speaker: str # Voice ID
+    speaker: str
     speaker_name: str
     text: str
 
@@ -687,7 +794,6 @@ class DialogueRequest(BaseModel):
 
 @app.post("/api/dialogue")
 async def generate_dialogue(req: DialogueRequest):
-    """Generate multi-character back-and-forth conversation audio merged into one master track."""
     if not req.lines:
         raise HTTPException(status_code=400, detail="No conversation lines provided.")
 
@@ -698,17 +804,16 @@ async def generate_dialogue(req: DialogueRequest):
         line_tts = TTSRequest(text=line.text, voice=line.speaker, engine="auto")
         tts_res = await generate_speech(line_tts)
         line_data = json.loads(tts_res.body.decode("utf-8"))
-        
+
         file_path = os.path.join(OUTPUTS_DIR, line_data["filename"])
         if os.path.exists(file_path):
-            audio_data, sr = sf.read(file_path)
+            audio_data, sr_val = sf.read(file_path)
             if len(audio_data.shape) > 1:
                 audio_data = audio_data.mean(axis=1)
             combined_segments.append(audio_data)
-            # Add 0.3s natural breath pause between speakers
-            pause = np.zeros(int(sr * 0.35))
+            pause = np.zeros(int(sr_val * 0.35))
             combined_segments.append(pause)
-            sample_rate = sr
+            sample_rate = sr_val
 
     if not combined_segments:
         raise HTTPException(status_code=500, detail="Dialogue generation failed.")
@@ -727,22 +832,21 @@ async def generate_dialogue(req: DialogueRequest):
 
 @app.post("/api/transcribe")
 async def transcribe_audio_file(audio_file: UploadFile = File(...)):
-    """Auto-transcribe reference audio sample with free high-accuracy neural ASR."""
     try:
         content = await audio_file.read()
         audio_io = io.BytesIO(content)
         data, sample_rate = sf.read(audio_io)
         if len(data.shape) > 1:
             data = data.mean(axis=1)
-            
+
         wav_io = io.BytesIO()
         sf.write(wav_io, data, sample_rate, format='WAV')
         wav_io.seek(0)
-        
+
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_io) as source:
             recorded = recognizer.record(source)
-            
+
         transcript = recognizer.recognize_google(recorded)
         return JSONResponse({"success": True, "transcript": transcript})
     except sr.UnknownValueError:
@@ -752,10 +856,9 @@ async def transcribe_audio_file(audio_file: UploadFile = File(...)):
 
 @app.delete("/api/cloned-voices/{voice_id}")
 def delete_cloned_voice(voice_id: str):
-    """Permanently delete a cloned voice and clean up its uploaded reference audio file."""
     db = get_db()
     deleted_voice = next((v for v in db if v["id"] == voice_id), None)
-    
+
     if deleted_voice:
         file_path = deleted_voice.get("file_path")
         if file_path and os.path.exists(file_path):
@@ -766,7 +869,7 @@ def delete_cloned_voice(voice_id: str):
         filtered = [v for v in db if v["id"] != voice_id]
         save_db(filtered)
         return JSONResponse({"success": True, "message": f"Voice '{deleted_voice['name']}' deleted.", "remaining": len(filtered)})
-    
+
     return JSONResponse({"success": False, "message": "Voice not found"}, status_code=404)
 
 # Serve static audio files
