@@ -290,7 +290,10 @@
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
       <div class="status-badge" id="engine-status">
         <span class="status-dot"></span>
-        <span id="engine-text">Fish Audio s2.1-pro Ready</span>
+        <span id="engine-text">Neural Studio Engine Ready</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-muted); background: #162032; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--card-border);">
+        <span>🪙 <strong id="header-user-tokens" style="color: #38bdf8;">5,000</strong> tokens</span>
       </div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-muted); background: #162032; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--card-border);">
         <span>👤 <strong id="header-username" style="color: #fff;">User</strong></span>
@@ -403,7 +406,8 @@
       <button class="tab-btn" onclick="switchTab('dialogue')">🎭 Multi-Speaker Studio</button>
       <button class="tab-btn" onclick="switchTab('clone')">🧬 Voice Cloning</button>
       <button class="tab-btn" onclick="switchTab('voices')">📚 Voice Catalog (USA & UK)</button>
-      <button class="tab-btn" onclick="switchTab('help')">💡 Help Center & Guide</button>
+      <button class="tab-btn" onclick="switchTab('guide')">📖 User & Audio Guide</button>
+      <button class="tab-btn" onclick="switchTab('help')">🆘 Help & Support Center</button>
       <button class="tab-btn hidden" id="tab-btn-admin" onclick="switchTab('admin')">👑 Admin Control Panel</button>
     </div>
 
@@ -655,61 +659,11 @@
       <div id="library-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; max-height: 550px; overflow-y: auto;"></div>
     </div>
 
-    <!-- TAB 5: Help Center & Audio Guide -->
-    <div id="tab-help" class="card hidden">
+    <!-- TAB 5: User & Acoustic Audio Guide -->
+    <div id="tab-guide" class="card hidden">
       <div class="card-title">
-        <span>💡 Help Center, Audio Guide & Support Desk</span>
+        <span>📖 Comprehensive Studio & Acoustic Audio Guide</span>
       </div>
-
-      <!-- Ticket & Complaint Filing Section -->
-      <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-          <div>
-            <h3 style="font-size: 1rem; font-weight: 700; color: #fff;">📩 File a Complaint or Support Request</h3>
-            <p style="font-size: 0.8rem; color: var(--text-muted);">Have issues with credits, voice cloning, audio artifacts, or account access? Submit a ticket directly to the administrator.</p>
-          </div>
-          <button class="pill-btn" onclick="fetchMyTickets()">🔄 Check My Tickets</button>
-        </div>
-
-        <form id="support-ticket-form" onsubmit="handleCreateTicket(event)" style="display: flex; flex-direction: column; gap: 12px;">
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
-            <div class="control-group">
-              <label>Issue Category</label>
-              <select id="ticket-category" style="background: #192336; border: 1px solid #2b3952; color: #fff; padding: 9px; border-radius: 6px; font-size: 0.85rem; width: 100%;">
-                <option value="Credit Issue">💳 Credit Balance Issue</option>
-                <option value="Voice Clone Glitch">🎙️ Voice Clone Distortion / Glitch</option>
-                <option value="Audio Quality">🔊 Audio Quality Tuning</option>
-                <option value="Account Access">🔐 Account / Login Issue</option>
-                <option value="Other">💬 General Question / Other</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <label>Subject / Brief Title</label>
-              <input type="text" id="ticket-subject" class="voice-search" placeholder="e.g., Credits deducted but generation failed" required style="margin: 0; padding: 9px;">
-            </div>
-          </div>
-
-          <div class="control-group">
-            <label>Detailed Message & Explanation</label>
-            <textarea id="ticket-message" rows="3" class="voice-search" placeholder="Explain what happened in detail so we can resolve or refund your credits promptly..." required style="margin: 0; width: 100%; resize: vertical;"></textarea>
-          </div>
-
-          <div style="display: flex; justify-content: flex-end;">
-            <button type="submit" id="btn-submit-ticket" class="btn-primary" style="padding: 9px 22px; font-size: 0.85rem;">
-              <span>🚀 Submit Support Ticket</span>
-            </button>
-          </div>
-        </form>
-
-        <!-- User Ticket Status List -->
-        <div id="user-tickets-box" style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 14px;">
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">My Submitted Complaints & Tickets</div>
-          <div id="user-tickets-list" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem;">
-            <div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>
-          </div>
-        </div>
-      </div>
-
       <div style="display: flex; flex-direction: column; gap: 14px;">
         <div class="faq-item">
           <div class="faq-title">🎙️ How do I get the absolute best voice clone quality?</div>
@@ -743,9 +697,70 @@
         </div>
 
         <div class="faq-item">
+          <div class="faq-title">🪙 How do Tokens work?</div>
+          <div class="faq-text">
+            Every new account starts with <strong>5,000 free tokens</strong>. Each synthesized character costs 1 token. You can see your live balance in the top navigation bar at all times.
+          </div>
+        </div>
+
+        <div class="faq-item">
           <div class="faq-title">🔒 Is my data and account secure?</div>
           <div class="faq-text">
             Yes. All account passwords are encrypted using SHA-256 before storage. User databases utilize parameterized queries to prevent SQL injections, and API credentials are kept server-side only.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 6: Help & Support Center (Complaints & Ticketing) -->
+    <div id="tab-help" class="card hidden">
+      <div class="card-title">
+        <span>🆘 Help & Support Desk</span>
+        <button class="pill-btn" onclick="fetchMyTickets()">🔄 Refresh My Tickets</button>
+      </div>
+
+      <!-- Ticket & Complaint Filing Section -->
+      <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+        <div style="margin-bottom: 14px;">
+          <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">📩 File a Complaint or Support Request</h3>
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 4px;">Encountered an issue with your tokens, audio generation, clone quality, or account access? File a complaint below and our administration will review and respond directly.</p>
+        </div>
+
+        <form id="support-ticket-form" onsubmit="handleCreateTicket(event)" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
+            <div class="control-group">
+              <label>Issue Category</label>
+              <select id="ticket-category" style="background: #192336; border: 1px solid #2b3952; color: #fff; padding: 9px; border-radius: 6px; font-size: 0.85rem; width: 100%;">
+                <option value="Credit Issue">💳 Credit / Token Issue</option>
+                <option value="Voice Clone Glitch">🎙️ Voice Clone Distortion / Glitch</option>
+                <option value="Audio Quality">🔊 Audio Quality Tuning</option>
+                <option value="Account Access">🔐 Account / Login Issue</option>
+                <option value="Other">💬 General Question / Other</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label>Subject / Brief Title</label>
+              <input type="text" id="ticket-subject" class="voice-search" placeholder="e.g., Tokens deducted but synthesis failed" required style="margin: 0; padding: 9px;">
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label>Detailed Message & Explanation</label>
+            <textarea id="ticket-message" rows="4" class="voice-search" placeholder="Explain what happened in detail so we can resolve your issue or refund your tokens promptly..." required style="margin: 0; width: 100%; resize: vertical;"></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="submit" id="btn-submit-ticket" class="btn-primary" style="padding: 10px 24px; font-size: 0.85rem;">
+              <span>🚀 Submit Support Complaint</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- User Ticket Status List -->
+        <div id="user-tickets-box" style="margin-top: 20px; border-top: 1px solid var(--card-border); padding-top: 16px;">
+          <div style="font-size: 0.9rem; font-weight: 700; color: #fff; margin-bottom: 10px;">My Submitted Complaints & Tickets</div>
+          <div id="user-tickets-list" style="display: flex; flex-direction: column; gap: 10px; font-size: 0.82rem;">
+            <div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>
           </div>
         </div>
       </div>
@@ -776,7 +791,7 @@
         </div>
         <div class="control-group">
           <span style="font-size: 0.75rem; color: var(--text-muted);">AI Inference Model</span>
-          <span id="stat-engine" style="font-size: 1rem; font-weight: 700; color: #34d399;">s2.1-pro-free</span>
+          <span id="stat-engine" style="font-size: 1rem; font-weight: 700; color: #34d399;">Neural Audio Pro Studio</span>
         </div>
       </div>
 
@@ -784,7 +799,7 @@
       <div style="margin-top: 14px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <div style="font-weight: 700; font-size: 0.95rem; color: #f59e0b;">📬 User Complaints & Support Tickets</div>
-          <span style="font-size: 0.78rem; color: var(--text-muted);">Resolve complaints, reply, or credit users</span>
+          <span style="font-size: 0.78rem; color: var(--text-muted);">Reply to complaints and click "Mark Resolved" when solved</span>
         </div>
         <div style="overflow-x: auto; background: rgba(16, 22, 36, 0.8); border: 1px solid var(--card-border); border-radius: 8px;">
           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
@@ -807,7 +822,10 @@
       </div>
 
       <div style="margin-top: 20px;">
-        <div style="font-weight: 700; font-size: 0.95rem; margin: 10px 0;">Registered Accounts Management</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div style="font-weight: 700; font-size: 0.95rem;">Registered Accounts Management</div>
+          <input type="text" id="admin-user-search" class="voice-search" placeholder="🔍 Search users by username or email..." oninput="filterAdminUsers()" style="margin: 0; width: 300px; padding: 7px 12px; font-size: 0.82rem;">
+        </div>
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
             <thead>
@@ -816,7 +834,7 @@
                 <th style="padding: 10px 8px;">Username</th>
                 <th style="padding: 10px 8px;">Email</th>
                 <th style="padding: 10px 8px;">Role</th>
-                <th style="padding: 10px 8px;">Credits</th>
+                <th style="padding: 10px 8px;">Tokens</th>
                 <th style="padding: 10px 8px;">Status</th>
                 <th style="padding: 10px 8px;">Actions</th>
               </tr>
@@ -849,13 +867,14 @@
     // Tab Switching
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices, #tab-help, #tab-admin').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices, #tab-guide, #tab-help, #tab-admin').forEach(el => el.classList.add('hidden'));
 
       const map = {
         tts: 'tab-tts',
         dialogue: 'tab-dialogue',
         clone: 'tab-clone',
         voices: 'tab-voices',
+        guide: 'tab-guide',
         help: 'tab-help',
         admin: 'tab-admin'
       };
@@ -980,6 +999,10 @@
         document.getElementById('header-username').textContent = user.username;
         const roleBadge = document.getElementById('header-role-badge');
         roleBadge.textContent = user.role.toUpperCase();
+
+        const userTokens = user.credits !== undefined ? user.credits : 5000;
+        document.getElementById('header-user-tokens').textContent = userTokens.toLocaleString();
+        refreshUserTokens(user.id);
 
         if (user.role === 'admin') {
           roleBadge.style.background = 'rgba(245, 158, 11, 0.2)';
@@ -1126,12 +1149,30 @@
       checkAuth();
     }
 
+    async function refreshUserTokens(userId) {
+      if (!userId) return;
+      try {
+        const res = await fetch(`/api/auth/me?user_id=${userId}`);
+        const data = await res.json();
+        if (data.success && data.user) {
+          document.getElementById('header-user-tokens').textContent = data.user.credits.toLocaleString();
+          const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
+          userObj.credits = data.user.credits;
+          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(userObj));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     async function init() {
       try {
         const confRes = await fetch('/api/config');
         const conf = await confRes.json();
-        if (conf.fish_audio_configured) {
-          document.getElementById('engine-text').textContent = `Fish Audio (${conf.fish_model}) Ready`;
+        if (conf.engine_label) {
+          document.getElementById('engine-text').textContent = conf.engine_label;
+        } else if (conf.fish_audio_configured) {
+          document.getElementById('engine-text').textContent = `Neural Studio Engine Ready`;
         }
 
         const [vRes, cRes] = await Promise.all([
@@ -1252,12 +1293,14 @@
       const t = document.getElementById('param-temp').value / 100;
       const tp = document.getElementById('param-topp').value / 100;
       const c = parseInt(document.getElementById('param-chunk').value);
+      const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
 
       try {
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            user_id: userObj.id,
             text: text,
             voice: state.currentVoice,
             rate: `${r >= 0 ? '+' : ''}${r}%`,
@@ -1273,10 +1316,16 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Synthesis failed');
 
+        if (data.credits_remaining !== undefined && data.credits_remaining !== null) {
+          document.getElementById('header-user-tokens').textContent = data.credits_remaining.toLocaleString();
+          userObj.credits = data.credits_remaining;
+          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(userObj));
+        }
+
         const player = document.getElementById('audio-player');
         player.src = data.audio_url;
         document.getElementById('out-download').href = data.audio_url;
-        document.getElementById('out-meta').textContent = `Rendered with ${data.engine_used.replace(/_/g, ' ').toUpperCase()}`;
+        document.getElementById('out-meta').textContent = `Rendered with ${data.engine_used.replace(/fish_audio/g, 'Studio Neural HD').replace(/fish_pro/g, 'Pro Voice HD').replace(/_/g, ' ').toUpperCase()}`;
         document.getElementById('output-box').style.display = 'flex';
         player.play();
         showToast('Speech synthesized successfully!');
@@ -1587,6 +1636,52 @@
     }
 
     // Admin Panel Actions
+    let cachedAdminUsers = [];
+
+    function renderAdminUsersTable(users) {
+      const tbody = document.getElementById('admin-users-tbody');
+      if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--text-sub);">No users found matching search query.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = users.map(u => `
+        <tr style="border-bottom: 1px solid var(--card-border);">
+          <td style="padding: 10px 8px; color: var(--text-sub);">#${u.id}</td>
+          <td style="padding: 10px 8px; font-weight: 700; color: #fff;">${u.username}</td>
+          <td style="padding: 10px 8px; color: var(--text-muted);">${u.email}</td>
+          <td style="padding: 10px 8px;">
+            <span class="${u.role === 'admin' ? 'badge-pro' : 'badge-free'}">${u.role.toUpperCase()}</span>
+          </td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #818cf8;">${u.credits.toLocaleString()}</td>
+          <td style="padding: 10px 8px;">
+            <span style="color: ${u.status === 'banned' ? '#f87171' : '#34d399'}; font-weight: 600;">${u.status.toUpperCase()}</span>
+          </td>
+          <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
+            <button onclick="editUserCredits(${u.id}, ${u.credits})" class="pill-btn" style="color: var(--accent-blue);">+ Tokens</button>
+            ${u.role !== 'admin' ? `
+              <button onclick="toggleUserBan(${u.id}, '${u.status === 'banned' ? 'active' : 'banned'}')" class="pill-btn" style="color: ${u.status === 'banned' ? '#34d399' : '#f87171'};">
+                ${u.status === 'banned' ? 'Unban' : 'Suspend'}
+              </button>
+              <button onclick="deleteUserAccount(${u.id})" class="pill-btn" style="color: #ef4444;">Delete</button>
+            ` : '<span style="font-size: 0.72rem; color: var(--text-sub);">Protected</span>'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function filterAdminUsers() {
+      const q = (document.getElementById('admin-user-search')?.value || '').toLowerCase().trim();
+      if (!q) {
+        renderAdminUsersTable(cachedAdminUsers);
+        return;
+      }
+      const filtered = cachedAdminUsers.filter(u =>
+        (u.username && u.username.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q))
+      );
+      renderAdminUsersTable(filtered);
+    }
+
     async function fetchAdminData() {
       try {
         const [uRes, tRes] = await Promise.all([
@@ -1597,34 +1692,12 @@
         const tData = await tRes.json();
 
         if (data.success) {
+          cachedAdminUsers = data.users || [];
           document.getElementById('stat-total-users').textContent = data.stats.total_users;
           document.getElementById('stat-clones').textContent = data.stats.cloned_voices_count;
           document.getElementById('stat-engine').textContent = data.stats.engine;
 
-          const tbody = document.getElementById('admin-users-tbody');
-          tbody.innerHTML = data.users.map(u => `
-            <tr style="border-bottom: 1px solid var(--card-border);">
-              <td style="padding: 10px 8px; color: var(--text-sub);">#${u.id}</td>
-              <td style="padding: 10px 8px; font-weight: 700; color: #fff;">${u.username}</td>
-              <td style="padding: 10px 8px; color: var(--text-muted);">${u.email}</td>
-              <td style="padding: 10px 8px;">
-                <span class="${u.role === 'admin' ? 'badge-pro' : 'badge-free'}">${u.role.toUpperCase()}</span>
-              </td>
-              <td style="padding: 10px 8px; font-weight: 600; color: #818cf8;">${u.credits.toLocaleString()}</td>
-              <td style="padding: 10px 8px;">
-                <span style="color: ${u.status === 'banned' ? '#f87171' : '#34d399'}; font-weight: 600;">${u.status.toUpperCase()}</span>
-              </td>
-              <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
-                <button onclick="editUserCredits(${u.id}, ${u.credits})" class="pill-btn" style="color: var(--accent-blue);">+ Credits</button>
-                ${u.role !== 'admin' ? `
-                  <button onclick="toggleUserBan(${u.id}, '${u.status === 'banned' ? 'active' : 'banned'}')" class="pill-btn" style="color: ${u.status === 'banned' ? '#34d399' : '#f87171'};">
-                    ${u.status === 'banned' ? 'Unban' : 'Suspend'}
-                  </button>
-                  <button onclick="deleteUserAccount(${u.id})" class="pill-btn" style="color: #ef4444;">Delete</button>
-                ` : '<span style="font-size: 0.72rem; color: var(--text-sub);">Protected</span>'}
-              </td>
-            </tr>
-          `).join('');
+          filterAdminUsers();
         }
 
         if (tData.success && tData.tickets) {
@@ -1649,8 +1722,11 @@
                   <span style="font-size: 0.72rem; font-weight: 700; ${t.status === 'resolved' ? 'color: #34d399;' : 'color: #f59e0b;'}">${t.status.toUpperCase()}</span>
                 </td>
                 <td style="padding: 10px 8px; font-size: 0.72rem; color: var(--text-sub);">${(t.created_at || '').substring(0, 10)}</td>
-                <td style="padding: 10px 8px;">
+                <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
                   <button onclick="replySupportTicket(${t.id})" class="pill-btn" style="color: var(--accent-blue);">💬 Reply</button>
+                  ${t.status !== 'resolved' ? `
+                    <button onclick="resolveSupportTicketDirect(${t.id})" class="pill-btn" style="color: #34d399; border-color: rgba(16, 185, 129, 0.4);">✓ Resolve</button>
+                  ` : ''}
                 </td>
               </tr>
             `).join('');
@@ -1661,15 +1737,29 @@
       }
     }
 
+    async function resolveSupportTicketDirect(ticketId) {
+      try {
+        const res = await fetch(`/api/admin/tickets/${ticketId}/resolve`, { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || 'Marked as resolved');
+        fetchAdminData();
+      } catch (e) {
+        showToast('Error marking resolved: ' + e.message, true);
+      }
+    }
+
     async function replySupportTicket(ticketId) {
-      const resp = prompt('Enter your admin reply / resolution message to email to the user:');
+      const resp = prompt('Enter your admin reply / message to send to the user (this does NOT mark resolved yet):');
       if (resp === null || !resp.trim()) return;
+
+      const shouldResolve = confirm('Do you want to mark this complaint as RESOLVED now? (Click Cancel to keep it Open)');
+      const finalStatus = shouldResolve ? 'resolved' : 'open';
 
       try {
         const res = await fetch('/api/admin/tickets/reply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticket_id: ticketId, response: resp.trim(), status: 'resolved' })
+          body: JSON.stringify({ ticket_id: ticketId, response: resp.trim(), status: finalStatus })
         });
         const data = await res.json();
         showToast(data.message || 'Reply sent!');

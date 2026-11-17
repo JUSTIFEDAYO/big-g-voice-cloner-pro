@@ -65,7 +65,7 @@ def init_db():
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'user',
-        credits INTEGER DEFAULT 10000,
+        credits INTEGER DEFAULT 5000,
         status TEXT DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -433,7 +433,7 @@ def auth_signup(req: SignupRequest):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, 'user', 10000, 'active')",
+        c.execute("INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, 'user', 5000, 'active')",
                   (u, e, hash_pw(p)))
         conn.commit()
         user_id = c.lastrowid
@@ -446,7 +446,7 @@ def auth_signup(req: SignupRequest):
                 "username": u,
                 "email": e,
                 "role": "user",
-                "credits": 10000
+                "credits": 5000
             },
             "message": "Account created successfully!"
         })
@@ -483,6 +483,27 @@ def auth_login(req: LoginRequest):
             "message": f"Welcome back, {user[1]}!"
         })
     raise HTTPException(status_code=401, detail="Invalid credentials. Please verify your username and password.")
+
+@app.get("/api/auth/me")
+def auth_get_me(user_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role, credits, status FROM users WHERE id = ?", (user_id,))
+    user = c.fetchone()
+    conn.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return JSONResponse({
+        "success": True,
+        "user": {
+            "id": user[0],
+            "username": user[1],
+            "email": user[2],
+            "role": user[3],
+            "credits": user[4],
+            "status": user[5]
+        }
+    })
 
 @app.post("/api/auth/forgot-password")
 def auth_forgot_password(req: ForgotPasswordRequest):
@@ -654,6 +675,7 @@ def admin_reply_ticket(req: ReplyTicketRequest):
     user_email = ticket[0]
     user_name = ticket[1]
     ticket_sub = ticket[2]
+    status_label = "RESOLVED" if req.status == "resolved" else "IN PROGRESS"
     send_smtp_email(
         to_email=user_email,
         subject=f"Update on Support Ticket #{req.ticket_id}: {ticket_sub}",
@@ -665,13 +687,22 @@ def admin_reply_ticket(req: ReplyTicketRequest):
             <div style="background: #1e293b; padding: 14px; border-left: 4px solid #3b82f6; margin: 16px 0; border-radius: 4px;">
                 {req.response}
             </div>
-            <p style="font-size: 13px; color: #94a3b8;">Status: <b style="color: #10b981;">{req.status.upper()}</b></p>
+            <p style="font-size: 13px; color: #94a3b8;">Ticket Status: <b style="color: {'#10b981' if req.status == 'resolved' else '#f59e0b'};">{status_label}</b></p>
         </div>
         """,
-        text_content=f"Hello {user_name},\n\nSupport response for #{req.ticket_id}:\n{req.response}\n\nStatus: {req.status}"
+        text_content=f"Hello {user_name},\n\nSupport response for #{req.ticket_id}:\n{req.response}\n\nStatus: {status_label}"
     )
 
-    return JSONResponse({"success": True, "message": "Reply saved and emailed to user."})
+    return JSONResponse({"success": True, "message": f"Reply saved ({status_label}) and emailed to user."})
+
+@app.post("/api/admin/tickets/{ticket_id}/resolve")
+def admin_resolve_ticket_direct(ticket_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE support_tickets SET status = 'resolved' WHERE id = ?", (ticket_id,))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"success": True, "message": f"Ticket #{ticket_id} marked as RESOLVED."})
 
 # Admin Endpoints
 @app.get("/api/admin/users")
@@ -699,7 +730,7 @@ def admin_get_users():
         "stats": {
             "total_users": len(users),
             "cloned_voices_count": len(db),
-            "engine": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
+            "engine": "Neural Audio Pro Studio"
         }
     })
 
@@ -736,8 +767,8 @@ def get_config():
     has_fish = bool(api_key and len(api_key) > 10)
     return JSONResponse({
         "fish_audio_configured": has_fish,
-        "fish_model": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free"),
-        "key_preview": f"{api_key[:12]}...{api_key[-4:]}" if has_fish else "Not configured"
+        "engine_label": "Studio Neural HD Engine Ready",
+        "has_pro_engine": has_fish
     })
 
 @app.get("/api/models")
@@ -784,7 +815,7 @@ async def clone_voice(
     name: str = Form(...),
     description: Optional[str] = Form(""),
     reference_text: Optional[str] = Form(""),
-    tags: Optional[str] = Form("Fish Audio, Custom Voice"),
+    tags: Optional[str] = Form("Custom Cloned Voice"),
     audio_file: UploadFile = File(...)
 ):
     """
@@ -834,6 +865,7 @@ async def clone_voice(
 
 # Advanced Voice Tuning Parameters Model
 class TTSRequest(BaseModel):
+    user_id: Optional[int] = None
     text: str
     voice: str # Cloned Voice ID, Fish Pro ID, or Edge TTS ShortName
     engine: Optional[str] = "auto"
@@ -852,6 +884,31 @@ async def generate_speech(req: TTSRequest):
     """Generate high-fidelity speech with fine-grained temperature, top_p & acoustic conditioning."""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    # Deduct tokens (1 credit per character synthesized, minimum 10)
+    tokens_to_deduct = max(len(req.text.strip()), 10)
+    current_credits = None
+
+    if req.user_id:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT credits, role FROM users WHERE id = ?", (req.user_id,))
+        u_row = c.fetchone()
+        if u_row:
+            user_creds = u_row[0]
+            user_role = u_row[1]
+            if user_role != "admin" and user_creds < tokens_to_deduct:
+                conn.close()
+                raise HTTPException(status_code=402, detail=f"Insufficient tokens. You have {user_creds:,} tokens, but this generation requires {tokens_to_deduct:,} tokens.")
+            
+            if user_role != "admin":
+                new_creds = max(0, user_creds - tokens_to_deduct)
+                c.execute("UPDATE users SET credits = ? WHERE id = ?", (new_creds, req.user_id))
+                conn.commit()
+                current_credits = new_creds
+            else:
+                current_credits = user_creds
+        conn.close()
 
     db = get_db()
     cloned_match = next((v for v in db if v["id"] == req.voice), None)
@@ -992,7 +1049,9 @@ async def generate_speech(req: TTSRequest):
         "audio_url": f"/outputs/{output_filename}",
         "filename": output_filename,
         "engine_used": engine_used,
-        "voice_name": pro_match["name"] if pro_match else (cloned_match["name"] if cloned_match else req.voice)
+        "voice_name": pro_match["name"] if pro_match else (cloned_match["name"] if cloned_match else req.voice),
+        "tokens_spent": tokens_to_deduct,
+        "credits_remaining": current_credits
     })
 
 # Dialogue Generator (Multi-Speaker Studio)
