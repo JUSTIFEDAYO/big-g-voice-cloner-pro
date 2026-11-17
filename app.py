@@ -19,6 +19,9 @@ import shutil
 import io
 import sqlite3
 import hashlib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import numpy as np
 import soundfile as sf
 import edge_tts
@@ -74,6 +77,20 @@ def init_db():
         token TEXT NOT NULL,
         expires_at REAL NOT NULL,
         used INTEGER DEFAULT 0
+    )
+    ''')
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS support_tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT NOT NULL,
+        email TEXT NOT NULL,
+        category TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        message TEXT NOT NULL,
+        status TEXT DEFAULT 'open',
+        admin_response TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
     # Admin Account Seeding
@@ -319,7 +336,7 @@ def apply_dsp_effects(file_path: str, effect: str) -> str:
         print("DSP Effect Error:", e)
         return os.path.basename(file_path)
 
-# Authentication Request Models
+# Authentication & Support Request Models
 class SignupRequest(BaseModel):
     username: str
     email: str
@@ -340,6 +357,64 @@ class ResetPasswordRequest(BaseModel):
 class UpdateUserCreditsRequest(BaseModel):
     user_id: int
     credits: int
+
+class CreateTicketRequest(BaseModel):
+    user_id: Optional[int] = None
+    username: str
+    email: str
+    category: str
+    subject: str
+    message: str
+
+class ReplyTicketRequest(BaseModel):
+    ticket_id: int
+    response: str
+    status: Optional[str] = "resolved"
+
+def send_smtp_email(to_email: str, subject: str, html_content: str, text_content: str) -> dict:
+    """
+    Zero-Cost Email Dispatch via standard SMTP (e.g. Gmail SMTP or custom host).
+    Uses environment variables:
+    - SMTP_HOST (default: smtp.gmail.com)
+    - SMTP_PORT (default: 587)
+    - SMTP_USER (e.g. ifelexdan@gmail.com)
+    - SMTP_PASSWORD (Google 16-character App Password)
+    If SMTP_PASSWORD is not set or authentication fails, returns failure flag
+    allowing fallback in the UI while logging detailed instructions.
+    """
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
+    smtp_user = os.getenv("SMTP_USER", "ifelexdan@gmail.com").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+
+    if not smtp_pass:
+        return {
+            "sent": False,
+            "reason": "SMTP_PASSWORD not configured. Please add your 16-character Google App Password in .env or Render Environment Variables."
+        }
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"BIG G Voice Cloner Pro <{smtp_user}>"
+        msg["To"] = to_email
+
+        part1 = MIMEText(text_content, "plain")
+        part2 = MIMEText(html_content, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [to_email], msg.as_string())
+
+        return {"sent": True, "reason": "Email dispatched successfully via SMTP."}
+    except Exception as e:
+        print(f"[SMTP Error] Failed sending to {to_email}: {e}")
+        return {"sent": False, "reason": str(e)}
 
 # Auth Endpoints
 @app.post("/api/auth/signup")
@@ -414,12 +489,12 @@ def auth_forgot_password(req: ForgotPasswordRequest):
     e = req.email.strip().lower()
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE email = ?", (e,))
+    c.execute("SELECT id, username FROM users WHERE email = ?", (e,))
     user = c.fetchone()
     if not user:
         conn.close()
         # Security: Do not reveal if email exists or not
-        return JSONResponse({"success": True, "message": "If this email is registered, a password reset code has been generated."})
+        return JSONResponse({"success": True, "message": "If this email is registered, a password reset code has been sent to your inbox."})
 
     # Generate 6-digit numeric reset token valid for 30 minutes
     import random
@@ -429,11 +504,39 @@ def auth_forgot_password(req: ForgotPasswordRequest):
     conn.commit()
     conn.close()
 
-    return JSONResponse({
+    html_email = f"""
+    <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 30px; border-radius: 10px; max-width: 520px; margin: 0 auto; border: 1px solid #1e293b;">
+        <h2 style="color: #6366f1; margin-top: 0;">BIG G'S VOICE CLONER PRO</h2>
+        <p style="font-size: 15px; color: #cbd5e1;">Hello <strong>{user[1]}</strong>,</p>
+        <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">You requested a password reset for your Voice Cloner Pro account. Use the 6-digit verification code below to set a new password:</p>
+        <div style="text-align: center; margin: 25px 0;">
+            <span style="display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; background: #1e293b; padding: 12px 24px; border-radius: 8px; border: 1px solid #3b82f6;">{reset_code}</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">This code will expire in 30 minutes. If you did not request this, you can safely ignore this email.</p>
+        <hr style="border: 0; border-top: 1px solid #1e293b; margin: 20px 0;">
+        <p style="font-size: 11px; color: #475569; text-align: center;">BIG G Voice Cloner Pro • Studio AI Audio Suite</p>
+    </div>
+    """
+    text_email = f"Your BIG G Voice Cloner Pro password reset verification code is: {reset_code}\nThis code will expire in 30 minutes."
+
+    email_status = send_smtp_email(
+        to_email=e,
+        subject=f"{reset_code} is your Voice Cloner Pro reset code",
+        html_content=html_email,
+        text_content=text_email
+    )
+
+    resp_data = {
         "success": True,
-        "reset_code": reset_code, # Displayed in secure prompt for seamless local/self-hosted recovery
-        "message": f"Reset code generated for {e}. Code: {reset_code}"
-    })
+        "email_sent": email_status["sent"],
+        "message": "A 6-digit password reset code has been sent to your email inbox." if email_status["sent"] else "Password reset code generated. Check email or verify below."
+    }
+    # If SMTP is not yet configured with a Google App Password, include code so user is never locked out
+    if not email_status["sent"]:
+        resp_data["reset_code"] = reset_code
+        resp_data["smtp_note"] = "SMTP_PASSWORD not configured. Code provided for instant recovery."
+
+    return JSONResponse(resp_data)
 
 @app.post("/api/auth/reset-password")
 def auth_reset_password(req: ResetPasswordRequest):
@@ -460,6 +563,115 @@ def auth_reset_password(req: ResetPasswordRequest):
     conn.close()
 
     return JSONResponse({"success": True, "message": "Password reset successfully! You can now sign in."})
+
+# Support Center & Ticket Endpoints
+@app.post("/api/support/ticket")
+def create_support_ticket(req: CreateTicketRequest):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO support_tickets (user_id, username, email, category, subject, message, status) VALUES (?, ?, ?, ?, ?, ?, 'open')",
+        (req.user_id, req.username.strip(), req.email.strip().lower(), req.category.strip(), req.subject.strip(), req.message.strip())
+    )
+    conn.commit()
+    ticket_id = c.lastrowid
+    conn.close()
+
+    # Dispatch email notice to admin if configured
+    admin_email = os.getenv("SMTP_USER", "ifelexdan@gmail.com")
+    send_smtp_email(
+        to_email=admin_email,
+        subject=f"New Support Ticket #{ticket_id}: [{req.category}] {req.subject}",
+        html_content=f"<p>User <b>{req.username}</b> ({req.email}) filed a complaint:</p><p><b>Category:</b> {req.category}<br><b>Subject:</b> {req.subject}</p><p>{req.message}</p>",
+        text_content=f"Ticket #{ticket_id} from {req.username} ({req.email}):\n{req.message}"
+    )
+
+    return JSONResponse({
+        "success": True,
+        "ticket_id": ticket_id,
+        "message": f"Your ticket #{ticket_id} has been submitted! Our support team is reviewing it."
+    })
+
+@app.get("/api/support/my-tickets")
+def get_user_tickets(email: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, category, subject, message, status, admin_response, created_at FROM support_tickets WHERE email = ? ORDER BY id DESC",
+        (email.strip().lower(),)
+    )
+    rows = c.fetchall()
+    conn.close()
+    tickets = [{
+        "id": r[0],
+        "category": r[1],
+        "subject": r[2],
+        "message": r[3],
+        "status": r[4],
+        "admin_response": r[5],
+        "created_at": r[6]
+    } for r in rows]
+    return JSONResponse({"success": True, "tickets": tickets})
+
+# Admin Support Ticket Endpoints
+@app.get("/api/admin/tickets")
+def admin_get_all_tickets():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT id, user_id, username, email, category, subject, message, status, admin_response, created_at FROM support_tickets ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    tickets = [{
+        "id": r[0],
+        "user_id": r[1],
+        "username": r[2],
+        "email": r[3],
+        "category": r[4],
+        "subject": r[5],
+        "message": r[6],
+        "status": r[7],
+        "admin_response": r[8],
+        "created_at": r[9]
+    } for r in rows]
+    return JSONResponse({"success": True, "tickets": tickets})
+
+@app.post("/api/admin/tickets/reply")
+def admin_reply_ticket(req: ReplyTicketRequest):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT email, username, subject FROM support_tickets WHERE id = ?", (req.ticket_id,))
+    ticket = c.fetchone()
+    if not ticket:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+
+    c.execute("UPDATE support_tickets SET admin_response = ?, status = ? WHERE id = ?",
+              (req.response.strip(), req.status, req.ticket_id))
+    conn.commit()
+    conn.close()
+
+    # Send response email to user
+    user_email = ticket[0]
+    user_name = ticket[1]
+    ticket_sub = ticket[2]
+    send_smtp_email(
+        to_email=user_email,
+        subject=f"Update on Support Ticket #{req.ticket_id}: {ticket_sub}",
+        html_content=f"""
+        <div style="font-family: Arial, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 8px;">
+            <h3 style="color: #6366f1;">BIG G'S Support Desk</h3>
+            <p>Hello <b>{user_name}</b>,</p>
+            <p>Our administrator has replied to your ticket: <i>{ticket_sub}</i></p>
+            <div style="background: #1e293b; padding: 14px; border-left: 4px solid #3b82f6; margin: 16px 0; border-radius: 4px;">
+                {req.response}
+            </div>
+            <p style="font-size: 13px; color: #94a3b8;">Status: <b style="color: #10b981;">{req.status.upper()}</b></p>
+        </div>
+        """,
+        text_content=f"Hello {user_name},\n\nSupport response for #{req.ticket_id}:\n{req.response}\n\nStatus: {req.status}"
+    )
+
+    return JSONResponse({"success": True, "message": "Reply saved and emailed to user."})
 
 # Admin Endpoints
 @app.get("/api/admin/users")

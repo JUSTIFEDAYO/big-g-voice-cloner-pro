@@ -658,8 +658,58 @@
     <!-- TAB 5: Help Center & Audio Guide -->
     <div id="tab-help" class="card hidden">
       <div class="card-title">
-        <span>💡 Help Center & Acoustic Audio Guide</span>
+        <span>💡 Help Center, Audio Guide & Support Desk</span>
       </div>
+
+      <!-- Ticket & Complaint Filing Section -->
+      <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 style="font-size: 1rem; font-weight: 700; color: #fff;">📩 File a Complaint or Support Request</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Have issues with credits, voice cloning, audio artifacts, or account access? Submit a ticket directly to the administrator.</p>
+          </div>
+          <button class="pill-btn" onclick="fetchMyTickets()">🔄 Check My Tickets</button>
+        </div>
+
+        <form id="support-ticket-form" onsubmit="handleCreateTicket(event)" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
+            <div class="control-group">
+              <label>Issue Category</label>
+              <select id="ticket-category" style="background: #192336; border: 1px solid #2b3952; color: #fff; padding: 9px; border-radius: 6px; font-size: 0.85rem; width: 100%;">
+                <option value="Credit Issue">💳 Credit Balance Issue</option>
+                <option value="Voice Clone Glitch">🎙️ Voice Clone Distortion / Glitch</option>
+                <option value="Audio Quality">🔊 Audio Quality Tuning</option>
+                <option value="Account Access">🔐 Account / Login Issue</option>
+                <option value="Other">💬 General Question / Other</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label>Subject / Brief Title</label>
+              <input type="text" id="ticket-subject" class="voice-search" placeholder="e.g., Credits deducted but generation failed" required style="margin: 0; padding: 9px;">
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label>Detailed Message & Explanation</label>
+            <textarea id="ticket-message" rows="3" class="voice-search" placeholder="Explain what happened in detail so we can resolve or refund your credits promptly..." required style="margin: 0; width: 100%; resize: vertical;"></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="submit" id="btn-submit-ticket" class="btn-primary" style="padding: 9px 22px; font-size: 0.85rem;">
+              <span>🚀 Submit Support Ticket</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- User Ticket Status List -->
+        <div id="user-tickets-box" style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 14px;">
+          <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">My Submitted Complaints & Tickets</div>
+          <div id="user-tickets-list" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem;">
+            <div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>
+          </div>
+        </div>
+      </div>
+
       <div style="display: flex; flex-direction: column; gap: 14px;">
         <div class="faq-item">
           <div class="faq-title">🎙️ How do I get the absolute best voice clone quality?</div>
@@ -708,7 +758,7 @@
           <span>👑 Admin Master Control Panel</span>
           <span class="badge-pro">Platform Owner</span>
         </div>
-        <button class="pill-btn" onclick="fetchAdminData()">🔄 Refresh Stats</button>
+        <button class="pill-btn" onclick="fetchAdminData()">🔄 Refresh Stats & Tickets</button>
       </div>
 
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
@@ -721,12 +771,42 @@
           <span id="stat-clones" style="font-size: 1.6rem; font-weight: 800; color: #818cf8;">0</span>
         </div>
         <div class="control-group">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Open Support Tickets</span>
+          <span id="stat-open-tickets" style="font-size: 1.6rem; font-weight: 800; color: #f59e0b;">0</span>
+        </div>
+        <div class="control-group">
           <span style="font-size: 0.75rem; color: var(--text-muted);">AI Inference Model</span>
           <span id="stat-engine" style="font-size: 1rem; font-weight: 700; color: #34d399;">s2.1-pro-free</span>
         </div>
       </div>
 
-      <div>
+      <!-- User Complaints / Support Tickets Section for Admin -->
+      <div style="margin-top: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-weight: 700; font-size: 0.95rem; color: #f59e0b;">📬 User Complaints & Support Tickets</div>
+          <span style="font-size: 0.78rem; color: var(--text-muted);">Resolve complaints, reply, or credit users</span>
+        </div>
+        <div style="overflow-x: auto; background: rgba(16, 22, 36, 0.8); border: 1px solid var(--card-border); border-radius: 8px;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--card-border); color: var(--text-muted);">
+                <th style="padding: 10px 8px;">ID</th>
+                <th style="padding: 10px 8px;">User</th>
+                <th style="padding: 10px 8px;">Category</th>
+                <th style="padding: 10px 8px;">Subject & Complaint</th>
+                <th style="padding: 10px 8px;">Status</th>
+                <th style="padding: 10px 8px;">Date</th>
+                <th style="padding: 10px 8px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-tickets-tbody">
+              <tr><td colspan="7" style="padding: 14px; text-align: center; color: var(--text-sub);">Loading complaints...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px;">
         <div style="font-weight: 700; font-size: 0.95rem; margin: 10px 0;">Registered Accounts Management</div>
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
@@ -787,6 +867,7 @@
         if (tabId === 'dialogue') renderDialogueEditor();
         if (tabId === 'clone') fetchClonedVoices();
         if (tabId === 'voices') renderLibrary();
+        if (tabId === 'help') fetchMyTickets();
         if (tabId === 'admin') fetchAdminData();
       }
     }
@@ -986,7 +1067,7 @@
       if (!email) return showToast('Please enter your email', true);
       const btn = document.getElementById('btn-send-code');
       btn.disabled = true;
-      btn.innerHTML = '<span>⏳ Requesting Code...</span>';
+      btn.innerHTML = '<span>⏳ Requesting & Sending Email...</span>';
 
       try {
         const res = await fetch('/api/auth/forgot-password', {
@@ -995,15 +1076,18 @@
           body: JSON.stringify({ email: email })
         });
         const data = await res.json();
-        showToast(data.message || 'Reset code generated');
-        if (data.reset_code) {
-          // Pre-populate for convenient seamless self-hosted recovery
-          document.getElementById('reset-code').value = data.reset_code;
+        if (data.email_sent) {
+          showToast('📧 Reset code emailed! Check your inbox (or spam folder).');
+        } else {
+          showToast(data.message || 'Reset code generated');
+          if (data.reset_code) {
+            document.getElementById('reset-code').value = data.reset_code;
+          }
         }
         document.getElementById('step-forgot-email').classList.add('hidden');
         document.getElementById('step-forgot-reset').classList.remove('hidden');
       } catch (e) {
-        showToast('Request failed', true);
+        showToast('Request failed: ' + e.message, true);
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<span>Generate Reset Code</span>';
@@ -1425,11 +1509,93 @@
       `).join('');
     }
 
+    // Support & Complaint Ticket Logic
+    async function handleCreateTicket(e) {
+      e.preventDefault();
+      const userStr = localStorage.getItem('bigg_auth_user_obj');
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (!user) return showToast('Please sign in to file a complaint', true);
+
+      const category = document.getElementById('ticket-category').value;
+      const subject = document.getElementById('ticket-subject').value.trim();
+      const message = document.getElementById('ticket-message').value.trim();
+      const btn = document.getElementById('btn-submit-ticket');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Submitting...</span>';
+
+      try {
+        const res = await fetch('/api/support/ticket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            username: user.username,
+            email: user.email,
+            category: category,
+            subject: subject,
+            message: message
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || 'Support ticket filed!');
+          document.getElementById('ticket-subject').value = '';
+          document.getElementById('ticket-message').value = '';
+          fetchMyTickets();
+        } else {
+          showToast(data.detail || 'Failed to submit ticket', true);
+        }
+      } catch (err) {
+        showToast('Error filing ticket: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🚀 Submit Support Ticket</span>';
+      }
+    }
+
+    async function fetchMyTickets() {
+      const userStr = localStorage.getItem('bigg_auth_user_obj');
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (!user) return;
+
+      const listEl = document.getElementById('user-tickets-list');
+      try {
+        const res = await fetch(`/api/support/my-tickets?email=${encodeURIComponent(user.email)}`);
+        const data = await res.json();
+        if (data.tickets && data.tickets.length > 0) {
+          listEl.innerHTML = data.tickets.map(t => `
+            <div style="background: #101624; border: 1px solid #1f2a40; border-radius: 8px; padding: 10px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-weight: 700; color: #fff;">#${t.id} [${t.category}] ${t.subject}</span>
+                <span style="padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; ${t.status === 'resolved' ? 'background: rgba(16, 185, 129, 0.2); color: #34d399;' : 'background: rgba(245, 158, 11, 0.2); color: #f59e0b;'}">${t.status.toUpperCase()}</span>
+              </div>
+              <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 6px;">${t.message}</div>
+              ${t.admin_response ? `
+                <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent-blue); padding: 8px 12px; border-radius: 4px; font-size: 0.78rem;">
+                  <strong style="color: var(--accent-blue);">Admin Response:</strong> ${t.admin_response}
+                </div>
+              ` : '<div style="font-size: 0.72rem; color: var(--text-sub); font-style: italic;">Awaiting admin review...</div>'}
+            </div>
+          `).join('');
+        } else {
+          listEl.innerHTML = '<div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>';
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
     // Admin Panel Actions
     async function fetchAdminData() {
       try {
-        const res = await fetch('/api/admin/users');
-        const data = await res.json();
+        const [uRes, tRes] = await Promise.all([
+          fetch('/api/admin/users'),
+          fetch('/api/admin/tickets')
+        ]);
+        const data = await uRes.json();
+        const tData = await tRes.json();
+
         if (data.success) {
           document.getElementById('stat-total-users').textContent = data.stats.total_users;
           document.getElementById('stat-clones').textContent = data.stats.cloned_voices_count;
@@ -1460,8 +1626,56 @@
             </tr>
           `).join('');
         }
+
+        if (tData.success && tData.tickets) {
+          const openCount = tData.tickets.filter(t => t.status === 'open').length;
+          document.getElementById('stat-open-tickets').textContent = openCount;
+
+          const tBody = document.getElementById('admin-tickets-tbody');
+          if (tData.tickets.length === 0) {
+            tBody.innerHTML = `<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--text-sub);">No support tickets filed yet.</td></tr>`;
+          } else {
+            tBody.innerHTML = tData.tickets.map(t => `
+              <tr style="border-bottom: 1px solid var(--card-border);">
+                <td style="padding: 10px 8px; color: var(--text-sub);">#${t.id}</td>
+                <td style="padding: 10px 8px; font-weight: 600;">${t.username}<br><span style="font-size: 0.72rem; color: var(--text-muted);">${t.email}</span></td>
+                <td style="padding: 10px 8px;"><span class="badge-free">${t.category}</span></td>
+                <td style="padding: 10px 8px; max-width: 280px;">
+                  <strong style="color: #fff;">${t.subject}</strong><br>
+                  <span style="font-size: 0.75rem; color: var(--text-muted);">${t.message}</span>
+                  ${t.admin_response ? `<div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;"><strong>Replied:</strong> ${t.admin_response}</div>` : ''}
+                </td>
+                <td style="padding: 10px 8px;">
+                  <span style="font-size: 0.72rem; font-weight: 700; ${t.status === 'resolved' ? 'color: #34d399;' : 'color: #f59e0b;'}">${t.status.toUpperCase()}</span>
+                </td>
+                <td style="padding: 10px 8px; font-size: 0.72rem; color: var(--text-sub);">${(t.created_at || '').substring(0, 10)}</td>
+                <td style="padding: 10px 8px;">
+                  <button onclick="replySupportTicket(${t.id})" class="pill-btn" style="color: var(--accent-blue);">💬 Reply</button>
+                </td>
+              </tr>
+            `).join('');
+          }
+        }
       } catch (err) {
         showToast('Admin data fetch error: ' + err.message, true);
+      }
+    }
+
+    async function replySupportTicket(ticketId) {
+      const resp = prompt('Enter your admin reply / resolution message to email to the user:');
+      if (resp === null || !resp.trim()) return;
+
+      try {
+        const res = await fetch('/api/admin/tickets/reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticketId, response: resp.trim(), status: 'resolved' })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Reply sent!');
+        fetchAdminData();
+      } catch (e) {
+        showToast('Failed to reply: ' + e.message, true);
       }
     }
 
