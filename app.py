@@ -945,9 +945,6 @@ class LoginRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
 
-class GoogleAuthRequest(BaseModel):
-    credential: str = Field(..., min_length=10)
-
 class ForgotPasswordRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=100)
 
@@ -1234,123 +1231,6 @@ def auth_verify_email(req: VerifyEmailRequest, request: Request, response: Respo
             "credits": 2000
         },
         "message": "Email verified! Welcome to BIG G'S VOICE CLONER PRO."
-    })
-    json_resp.set_cookie(
-        key=COOKIE_NAME,
-        value=session_token,
-        httponly=True,
-        secure=is_https,
-        samesite="lax",
-        max_age=JWT_EXPIRATION_HOURS * 3600
-    )
-    return json_resp
-
-@app.post("/api/auth/google")
-async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
-    check_rate_limit(f"google_auth:{client_ip}", max_requests=10, window_seconds=60)
-
-    # Verify ID token with Google's tokeninfo endpoint
-    token_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={req.credential}"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(token_url)
-            if resp.status_code != 200:
-                logger.warning(f"Google tokeninfo returned status {resp.status_code}: {resp.text}")
-                raise HTTPException(status_code=400, detail="Invalid Google authentication token.")
-            payload = resp.json()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to communicate with Google authentication services: {e}")
-        raise HTTPException(status_code=502, detail="Unable to verify credentials with Google. Please try again.")
-
-    # Validate audience
-    token_aud = payload.get("aud")
-    if token_aud != GOOGLE_CLIENT_ID:
-        logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
-        raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
-
-    # Validate email
-    email = payload.get("email", "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Google account did not provide an email address.")
-
-    email_verified = payload.get("email_verified")
-    if str(email_verified).lower() not in ("true", "1"):
-        raise HTTPException(status_code=400, detail="Google account email is not verified.")
-
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    # Check if user already exists with this email
-    c.execute(
-        "SELECT id, username, email, role, credits, status FROM users WHERE email = ? COLLATE NOCASE",
-        (email,)
-    )
-    user = c.fetchone()
-
-    if user:
-        if user["status"] == "banned":
-            conn.close()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended. Please contact support.")
-
-        user_id = user["id"]
-        username = user["username"]
-        role = user["role"]
-        credits_val = user["credits"]
-        conn.close()
-    else:
-        # Create new user
-        # Generate base username from email or name
-        raw_name = payload.get("name") or email.split("@")[0]
-        base_username = re.sub(r"[^a-zA-Z0-9_\-\.]", "", raw_name.lower().replace(" ", "_"))
-        if len(base_username) < 3:
-            base_username = f"user_{base_username}"
-        base_username = base_username[:20]
-
-        c.execute("SELECT username FROM users")
-        existing_usernames = {row["username"].lower() for row in c.fetchall()}
-
-        chosen_username = base_username
-        suffix_idx = 1
-        while chosen_username.lower() in existing_usernames:
-            suffix = str(secrets.randbelow(9000) + 1000)
-            chosen_username = f"{base_username[:15]}_{suffix}"
-
-        # Random secure password hash (account is Google-authenticated)
-        dummy_pw = secrets.token_urlsafe(32)
-        pw_hash = hash_password(dummy_pw)
-        role = "user"
-        credits_val = 2000
-
-        try:
-            c.execute(
-                "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, 'active')",
-                (chosen_username, email, pw_hash, role, credits_val)
-            )
-            conn.commit()
-            user_id = c.lastrowid
-            username = chosen_username
-        except sqlite3.IntegrityError:
-            conn.close()
-            raise HTTPException(status_code=400, detail="Account creation conflict. Please try signing in again.")
-        finally:
-            if conn:
-                conn.close()
-
-    session_token = create_session_jwt(user_id=user_id, username=username, role=role)
-    is_https = request.url.scheme == "https"
-    json_resp = JSONResponse({
-        "success": True,
-        "user": {
-            "id": user_id,
-            "username": username,
-            "email": email,
-            "role": role,
-            "credits": credits_val
-        },
-        "message": f"Welcome to BIG G'S VOICE CLONER PRO, {username}!"
     })
     json_resp.set_cookie(
         key=COOKIE_NAME,
@@ -1736,123 +1616,6 @@ async def auth_google(req: GoogleAuthRequest, request: Request, response: Respon
     )
     return json_resp
 
-@app.post("/api/auth/google")
-async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
-    check_rate_limit(f"google_auth:{client_ip}", max_requests=10, window_seconds=60)
-
-    # Verify ID token with Google's tokeninfo endpoint
-    token_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={req.credential}"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(token_url)
-            if resp.status_code != 200:
-                logger.warning(f"Google tokeninfo returned status {resp.status_code}: {resp.text}")
-                raise HTTPException(status_code=400, detail="Invalid Google authentication token.")
-            payload = resp.json()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to communicate with Google authentication services: {e}")
-        raise HTTPException(status_code=502, detail="Unable to verify credentials with Google. Please try again.")
-
-    # Validate audience
-    token_aud = payload.get("aud")
-    if token_aud != GOOGLE_CLIENT_ID:
-        logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
-        raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
-
-    # Validate email
-    email = payload.get("email", "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Google account did not provide an email address.")
-
-    email_verified = payload.get("email_verified")
-    if str(email_verified).lower() not in ("true", "1"):
-        raise HTTPException(status_code=400, detail="Google account email is not verified.")
-
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    # Check if user already exists with this email
-    c.execute(
-        "SELECT id, username, email, role, credits, status FROM users WHERE email = ? COLLATE NOCASE",
-        (email,)
-    )
-    user = c.fetchone()
-
-    if user:
-        if user["status"] == "banned":
-            conn.close()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended. Please contact support.")
-
-        user_id = user["id"]
-        username = user["username"]
-        role = user["role"]
-        credits_val = user["credits"]
-        conn.close()
-    else:
-        # Create new user
-        # Generate base username from email or name
-        raw_name = payload.get("name") or email.split("@")[0]
-        base_username = re.sub(r"[^a-zA-Z0-9_\-\.]", "", raw_name.lower().replace(" ", "_"))
-        if len(base_username) < 3:
-            base_username = f"user_{base_username}"
-        base_username = base_username[:20]
-
-        c.execute("SELECT username FROM users")
-        existing_usernames = {row["username"].lower() for row in c.fetchall()}
-
-        chosen_username = base_username
-        suffix_idx = 1
-        while chosen_username.lower() in existing_usernames:
-            suffix = str(secrets.randbelow(9000) + 1000)
-            chosen_username = f"{base_username[:15]}_{suffix}"
-
-        # Random secure password hash (account is Google-authenticated)
-        dummy_pw = secrets.token_urlsafe(32)
-        pw_hash = hash_password(dummy_pw)
-        role = "user"
-        credits_val = 2000
-
-        try:
-            c.execute(
-                "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, 'active')",
-                (chosen_username, email, pw_hash, role, credits_val)
-            )
-            conn.commit()
-            user_id = c.lastrowid
-            username = chosen_username
-        except sqlite3.IntegrityError:
-            conn.close()
-            raise HTTPException(status_code=400, detail="Account creation conflict. Please try signing in again.")
-        finally:
-            if conn:
-                conn.close()
-
-    session_token = create_session_jwt(user_id=user_id, username=username, role=role)
-    is_https = request.url.scheme == "https"
-    json_resp = JSONResponse({
-        "success": True,
-        "user": {
-            "id": user_id,
-            "username": username,
-            "email": email,
-            "role": role,
-            "credits": credits_val
-        },
-        "message": f"Welcome to BIG G'S VOICE CLONER PRO, {username}!"
-    })
-    json_resp.set_cookie(
-        key=COOKIE_NAME,
-        value=session_token,
-        httponly=True,
-        secure=is_https,
-        samesite="lax",
-        max_age=JWT_EXPIRATION_HOURS * 3600
-    )
-    return json_resp
-
 @app.post("/api/auth/logout")
 def auth_logout(response: Response):
     json_resp = JSONResponse({"success": True, "message": "Signed out successfully."})
@@ -1878,8 +1641,8 @@ def auth_get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
 # PRIORITY 2: Password Reset & Support Endpoints
 # -------------------------------------------------------------
 
-def _send_reset_email_worker(email: str, username: str, reset_code: str):
-    """Background worker to send password reset emails outside the request response path."""
+def send_password_reset_email(email: str, username: str, reset_code: str) -> dict:
+    """Sends password reset email and returns the delivery result dictionary."""
     escaped_user = html.escape(username)
     html_email = f"""
     <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 30px; border-radius: 10px; max-width: 520px; margin: 0 auto; border: 1px solid #1e293b;">
@@ -1896,14 +1659,12 @@ def _send_reset_email_worker(email: str, username: str, reset_code: str):
     """
     text_email = f"Your BIG G Voice Cloner Pro verification code is: {reset_code}\nThis code expires in 30 minutes."
 
-    delivery = send_smtp_email(
+    return send_smtp_email(
         to_email=email,
         subject=f"{reset_code} is your Voice Cloner Pro reset code",
         html_content=html_email,
         text_content=text_email
     )
-    if not delivery.get("sent", False):
-        logger.warning(f"Background password reset delivery failure for account: {delivery.get('reason')}")
 
 @app.post("/api/auth/forgot-password")
 def auth_forgot_password(req: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks):
@@ -1944,11 +1705,12 @@ def auth_forgot_password(req: ForgotPasswordRequest, request: Request, backgroun
 
     # Dispatch email in a background worker thread outside the HTTP response path so registered
     # and unregistered email addresses return with identical timing without leaking SMTP latency
-    worker_thread = threading.Thread(
-        target=_send_reset_email_worker,
-        args=(e, user["username"], reset_code),
-        daemon=True
-    )
+    def _dispatch_worker():
+        delivery = send_password_reset_email(e, user["username"], reset_code)
+        if not delivery.get("sent", False):
+            logger.error(f"Password reset email delivery failure for {e}: {delivery.get('reason')}")
+
+    worker_thread = threading.Thread(target=_dispatch_worker, daemon=True)
     worker_thread.start()
 
     return generic_resp
