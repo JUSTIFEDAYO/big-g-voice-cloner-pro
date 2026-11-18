@@ -914,3 +914,57 @@ def test_support_ticket_single_email_dispatch(client, monkeypatch):
     assert len(dispatch_calls) == 1
     assert dispatch_calls[0]["to"] == f"{u}@example.com"
     assert f"#{ticket_id}" in dispatch_calls[0]["subject"]
+
+
+def test_google_auth_new_user_and_existing_user(client, monkeypatch):
+    """Verify Google OAuth token verification, user auto-provisioning with 2,000 credits, and return session cookie."""
+    import httpx
+
+    fake_google_email = f"goog_{uuid.uuid4().hex[:6]}@gmail.com"
+
+    # Mock httpx.AsyncClient.get for Google's tokeninfo endpoint
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {
+                "aud": studio_app.GOOGLE_CLIENT_ID,
+                "email": fake_google_email,
+                "email_verified": "true",
+                "name": "Google Tester User",
+                "sub": "123456789012345678901"
+            }
+
+    async def mock_get(self, url, *args, **kwargs):
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    # 1. Sign in with Google (New User)
+    client.cookies.clear()
+    res = client.post("/api/auth/google", json={"credential": "mock_valid_google_credential_token_12345"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["user"]["email"] == fake_google_email
+    assert data["user"]["credits"] == 2000
+    assert studio_app.COOKIE_NAME in client.cookies
+
+    # Check database record
+    conn = studio_app.get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT credits, role, status FROM users WHERE email = ?", (fake_google_email,))
+    row = c.fetchone()
+    conn.close()
+    assert row is not None
+    assert row["credits"] == 2000
+    assert row["role"] == "user"
+    assert row["status"] == "active"
+
+    # 2. Sign in with Google again (Existing User)
+    client.cookies.clear()
+    res2 = client.post("/api/auth/google", json={"credential": "mock_valid_google_credential_token_12345"})
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["success"] is True
+    assert data2["user"]["id"] == data["user"]["id"]
+    assert studio_app.COOKIE_NAME in client.cookies

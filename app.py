@@ -27,6 +27,7 @@ import re
 import html
 import sqlite3
 import hashlib
+import secrets
 import smtplib
 import threading
 import logging
@@ -262,6 +263,7 @@ JWT_SECRET = _raw_jwt_secret if _raw_jwt_secret else "fallback-dev-secret-key-32
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256").strip()
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "72"))
 COOKIE_NAME = "bigg_session_token"
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "259039949982-d8tmfn0t7f0ornr8k88dlj7f10bsqvd3.apps.googleusercontent.com").strip()
 
 # Bounded, Cleanable In-Memory Sliding-Window Rate Limiter
 RATE_LIMIT_STORE: Dict[str, List[float]] = defaultdict(list)
@@ -936,9 +938,15 @@ class UpdateProfileRequest(BaseModel):
     email: Optional[str] = Field(None, min_length=5, max_length=100)
     verification_code: Optional[str] = Field(None, min_length=6, max_length=6)
 
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(..., min_length=10)
+
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
+
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(..., min_length=10)
 
 class ForgotPasswordRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=100)
@@ -1237,6 +1245,123 @@ def auth_verify_email(req: VerifyEmailRequest, request: Request, response: Respo
     )
     return json_resp
 
+@app.post("/api/auth/google")
+async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"google_auth:{client_ip}", max_requests=10, window_seconds=60)
+
+    # Verify ID token with Google's tokeninfo endpoint
+    token_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={req.credential}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(token_url)
+            if resp.status_code != 200:
+                logger.warning(f"Google tokeninfo returned status {resp.status_code}: {resp.text}")
+                raise HTTPException(status_code=400, detail="Invalid Google authentication token.")
+            payload = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to communicate with Google authentication services: {e}")
+        raise HTTPException(status_code=502, detail="Unable to verify credentials with Google. Please try again.")
+
+    # Validate audience
+    token_aud = payload.get("aud")
+    if token_aud != GOOGLE_CLIENT_ID:
+        logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
+        raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
+
+    # Validate email
+    email = payload.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account did not provide an email address.")
+
+    email_verified = payload.get("email_verified")
+    if str(email_verified).lower() not in ("true", "1"):
+        raise HTTPException(status_code=400, detail="Google account email is not verified.")
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Check if user already exists with this email
+    c.execute(
+        "SELECT id, username, email, role, credits, status FROM users WHERE email = ? COLLATE NOCASE",
+        (email,)
+    )
+    user = c.fetchone()
+
+    if user:
+        if user["status"] == "banned":
+            conn.close()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended. Please contact support.")
+
+        user_id = user["id"]
+        username = user["username"]
+        role = user["role"]
+        credits_val = user["credits"]
+        conn.close()
+    else:
+        # Create new user
+        # Generate base username from email or name
+        raw_name = payload.get("name") or email.split("@")[0]
+        base_username = re.sub(r"[^a-zA-Z0-9_\-\.]", "", raw_name.lower().replace(" ", "_"))
+        if len(base_username) < 3:
+            base_username = f"user_{base_username}"
+        base_username = base_username[:20]
+
+        c.execute("SELECT username FROM users")
+        existing_usernames = {row["username"].lower() for row in c.fetchall()}
+
+        chosen_username = base_username
+        suffix_idx = 1
+        while chosen_username.lower() in existing_usernames:
+            suffix = str(secrets.randbelow(9000) + 1000)
+            chosen_username = f"{base_username[:15]}_{suffix}"
+
+        # Random secure password hash (account is Google-authenticated)
+        dummy_pw = secrets.token_urlsafe(32)
+        pw_hash = hash_password(dummy_pw)
+        role = "user"
+        credits_val = 2000
+
+        try:
+            c.execute(
+                "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, 'active')",
+                (chosen_username, email, pw_hash, role, credits_val)
+            )
+            conn.commit()
+            user_id = c.lastrowid
+            username = chosen_username
+        except sqlite3.IntegrityError:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Account creation conflict. Please try signing in again.")
+        finally:
+            if conn:
+                conn.close()
+
+    session_token = create_session_jwt(user_id=user_id, username=username, role=role)
+    is_https = request.url.scheme == "https"
+    json_resp = JSONResponse({
+        "success": True,
+        "user": {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "role": role,
+            "credits": credits_val
+        },
+        "message": f"Welcome to BIG G'S VOICE CLONER PRO, {username}!"
+    })
+    json_resp.set_cookie(
+        key=COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600
+    )
+    return json_resp
+
 @app.post("/api/auth/resend-verification")
 def auth_resend_verification(req: ResendVerificationRequest, request: Request):
     client_ip = request.client.host if request.client else "unknown"
@@ -1482,6 +1607,241 @@ def auth_login(req: LoginRequest, request: Request, response: Response):
             "credits": user["credits"]
         },
         "message": f"Welcome back, {user['username']}!"
+    })
+    json_resp.set_cookie(
+        key=COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600
+    )
+    return json_resp
+
+
+@app.post("/api/auth/google")
+async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"google_auth:{client_ip}", max_requests=10, window_seconds=60)
+
+    # Verify ID token with Google's tokeninfo endpoint
+    token_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={req.credential}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(token_url)
+            if resp.status_code != 200:
+                logger.warning(f"Google tokeninfo returned status {resp.status_code}: {resp.text}")
+                raise HTTPException(status_code=400, detail="Invalid Google authentication token.")
+            payload = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to communicate with Google authentication services: {e}")
+        raise HTTPException(status_code=502, detail="Unable to verify credentials with Google. Please try again.")
+
+    # Validate audience
+    token_aud = payload.get("aud")
+    if token_aud != GOOGLE_CLIENT_ID:
+        logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
+        raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
+
+    # Validate email
+    email = payload.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account did not provide an email address.")
+
+    email_verified = payload.get("email_verified")
+    if str(email_verified).lower() not in ("true", "1"):
+        raise HTTPException(status_code=400, detail="Google account email is not verified.")
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Check if user already exists with this email
+    c.execute(
+        "SELECT id, username, email, role, credits, status FROM users WHERE email = ? COLLATE NOCASE",
+        (email,)
+    )
+    user = c.fetchone()
+
+    if user:
+        if user["status"] == "banned":
+            conn.close()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended. Please contact support.")
+
+        user_id = user["id"]
+        username = user["username"]
+        role = user["role"]
+        credits_val = user["credits"]
+        conn.close()
+    else:
+        # Create new user
+        raw_name = payload.get("name") or email.split("@")[0]
+        base_username = re.sub(r"[^a-zA-Z0-9_\-\.]", "", raw_name.lower().replace(" ", "_"))
+        if len(base_username) < 3:
+            base_username = f"user_{base_username}"
+        base_username = base_username[:20]
+
+        c.execute("SELECT username FROM users")
+        existing_usernames = {row["username"].lower() for row in c.fetchall()}
+
+        chosen_username = base_username
+        while chosen_username.lower() in existing_usernames:
+            suffix = str(secrets.randbelow(9000) + 1000)
+            chosen_username = f"{base_username[:15]}_{suffix}"
+
+        dummy_pw = secrets.token_urlsafe(32)
+        pw_hash = hash_password(dummy_pw)
+        role = "user"
+        credits_val = 2000
+
+        try:
+            c.execute(
+                "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, 'active')",
+                (chosen_username, email, pw_hash, role, credits_val)
+            )
+            conn.commit()
+            user_id = c.lastrowid
+            username = chosen_username
+        except sqlite3.IntegrityError:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Account creation conflict. Please try signing in again.")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    session_token = create_session_jwt(user_id=user_id, username=username, role=role)
+    is_https = request.url.scheme == "https"
+    json_resp = JSONResponse({
+        "success": True,
+        "user": {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "role": role,
+            "credits": credits_val
+        },
+        "message": f"Welcome to BIG G'S VOICE CLONER PRO, {username}!"
+    })
+    json_resp.set_cookie(
+        key=COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600
+    )
+    return json_resp
+
+@app.post("/api/auth/google")
+async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"google_auth:{client_ip}", max_requests=10, window_seconds=60)
+
+    # Verify ID token with Google's tokeninfo endpoint
+    token_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={req.credential}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(token_url)
+            if resp.status_code != 200:
+                logger.warning(f"Google tokeninfo returned status {resp.status_code}: {resp.text}")
+                raise HTTPException(status_code=400, detail="Invalid Google authentication token.")
+            payload = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to communicate with Google authentication services: {e}")
+        raise HTTPException(status_code=502, detail="Unable to verify credentials with Google. Please try again.")
+
+    # Validate audience
+    token_aud = payload.get("aud")
+    if token_aud != GOOGLE_CLIENT_ID:
+        logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
+        raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
+
+    # Validate email
+    email = payload.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account did not provide an email address.")
+
+    email_verified = payload.get("email_verified")
+    if str(email_verified).lower() not in ("true", "1"):
+        raise HTTPException(status_code=400, detail="Google account email is not verified.")
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Check if user already exists with this email
+    c.execute(
+        "SELECT id, username, email, role, credits, status FROM users WHERE email = ? COLLATE NOCASE",
+        (email,)
+    )
+    user = c.fetchone()
+
+    if user:
+        if user["status"] == "banned":
+            conn.close()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended. Please contact support.")
+
+        user_id = user["id"]
+        username = user["username"]
+        role = user["role"]
+        credits_val = user["credits"]
+        conn.close()
+    else:
+        # Create new user
+        # Generate base username from email or name
+        raw_name = payload.get("name") or email.split("@")[0]
+        base_username = re.sub(r"[^a-zA-Z0-9_\-\.]", "", raw_name.lower().replace(" ", "_"))
+        if len(base_username) < 3:
+            base_username = f"user_{base_username}"
+        base_username = base_username[:20]
+
+        c.execute("SELECT username FROM users")
+        existing_usernames = {row["username"].lower() for row in c.fetchall()}
+
+        chosen_username = base_username
+        suffix_idx = 1
+        while chosen_username.lower() in existing_usernames:
+            suffix = str(secrets.randbelow(9000) + 1000)
+            chosen_username = f"{base_username[:15]}_{suffix}"
+
+        # Random secure password hash (account is Google-authenticated)
+        dummy_pw = secrets.token_urlsafe(32)
+        pw_hash = hash_password(dummy_pw)
+        role = "user"
+        credits_val = 2000
+
+        try:
+            c.execute(
+                "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, ?, ?, 'active')",
+                (chosen_username, email, pw_hash, role, credits_val)
+            )
+            conn.commit()
+            user_id = c.lastrowid
+            username = chosen_username
+        except sqlite3.IntegrityError:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Account creation conflict. Please try signing in again.")
+        finally:
+            if conn:
+                conn.close()
+
+    session_token = create_session_jwt(user_id=user_id, username=username, role=role)
+    is_https = request.url.scheme == "https"
+    json_resp = JSONResponse({
+        "success": True,
+        "user": {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "role": role,
+            "credits": credits_val
+        },
+        "message": f"Welcome to BIG G'S VOICE CLONER PRO, {username}!"
     })
     json_resp.set_cookie(
         key=COOKIE_NAME,
@@ -2410,7 +2770,8 @@ def get_config():
     api_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
     return JSONResponse({
         "engine_label": "Studio Neural HD Engine Ready",
-        "has_pro_engine": bool(api_key and len(api_key) > 10)
+        "has_pro_engine": bool(api_key and len(api_key) > 10),
+        "google_client_id": GOOGLE_CLIENT_ID
     })
 
 @app.get("/api/models")

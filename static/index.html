@@ -272,6 +272,7 @@
     }
     #toast.show { transform: translateY(0); opacity: 1; }
   </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -338,6 +339,13 @@
         <button type="submit" id="btn-login-submit" class="btn-primary" style="margin-top: 4px; padding: 12px;">
           <span>Sign In to Studio</span>
         </button>
+        <div style="display: flex; align-items: center; margin: 12px 0;">
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+          <span style="padding: 0 10px; font-size: 0.72rem; color: var(--text-sub); text-transform: uppercase;">or continue with</span>
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+        </div>
+        <div id="g_id_signin_login" style="display: flex; justify-content: center; min-height: 44px;"></div>
+
       </form>
 
       <!-- 2. CREATE ACCOUNT FORM -->
@@ -363,6 +371,13 @@
           <span>Create Free Account</span>
         </button>
         <div style="text-align: center; font-size: 0.72rem; color: var(--text-sub);">Includes 2,000 complimentary credits</div>
+        <div style="display: flex; align-items: center; margin: 12px 0;">
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+          <span style="padding: 0 10px; font-size: 0.72rem; color: var(--text-sub); text-transform: uppercase;">or continue with</span>
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+        </div>
+        <div id="g_id_signin_signup" style="display: flex; justify-content: center; min-height: 44px;"></div>
+
       </form>
 
       <!-- 2b. SIGNUP EMAIL VERIFICATION STEP -->
@@ -1068,6 +1083,69 @@
       }
     }
 
+    
+    let googleClientId = "259039949982-d8tmfn0t7f0ornr8k88dlj7f10bsqvd3.apps.googleusercontent.com";
+
+    async function handleGoogleCredential(response) {
+      if (!response || !response.credential) return;
+      showToast('Authenticating with Google...');
+      try {
+        const res = await apiFetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(data.message || `Welcome to Studio!`);
+          await checkAuth();
+        } else {
+          showToast(data.detail || data.message || 'Google sign-in failed', true);
+        }
+      } catch (err) {
+        showToast('Google sign-in error: ' + err.message, true);
+      }
+    }
+
+    function renderGoogleButtons() {
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+        setTimeout(renderGoogleButtons, 300);
+        return;
+      }
+      try {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleCredential
+        });
+
+        const loginEl = document.getElementById('g_id_signin_login');
+        if (loginEl) {
+          loginEl.innerHTML = '';
+          window.google.accounts.id.renderButton(loginEl, {
+            theme: 'filled_blue',
+            size: 'large',
+            width: '320',
+            text: 'signin_with',
+            shape: 'rectangular'
+          });
+        }
+
+        const signupEl = document.getElementById('g_id_signin_signup');
+        if (signupEl) {
+          signupEl.innerHTML = '';
+          window.google.accounts.id.renderButton(signupEl, {
+            theme: 'filled_blue',
+            size: 'large',
+            width: '320',
+            text: 'signup_with',
+            shape: 'rectangular'
+          });
+        }
+      } catch (e) {
+        console.warn('Google Identity initialization notice:', e);
+      }
+    }
+
     async function checkAuth() {
       try {
         const res = await apiFetch('/api/auth/me');
@@ -1395,6 +1473,9 @@
         const conf = await confRes.json();
         if (conf.engine_label) {
           document.getElementById('engine-text').textContent = conf.engine_label;
+        }
+        if (conf.google_client_id) {
+          googleClientId = conf.google_client_id;
         }
 
         const [vRes, cRes] = await Promise.all([
@@ -2051,6 +2132,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', checkAuth);
+  window.addEventListener('load', () => { setTimeout(renderGoogleButtons, 500); });
   </script>
 </body>
 </html>
