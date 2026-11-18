@@ -28,6 +28,7 @@ import html
 import sqlite3
 import hashlib
 import smtplib
+import threading
 import logging
 from collections import defaultdict
 from email.mime.text import MIMEText
@@ -54,6 +55,7 @@ from fastapi import (
     Request,
     Response,
     Depends,
+    BackgroundTasks,
     status
 )
 from fastapi.staticfiles import StaticFiles
@@ -71,12 +73,160 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VoiceClonerPro")
 
-# Base File Paths
+# Base File Paths & Storage Persistence
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DATA_ROOT = BASE_DIR
+
+def _file_contents_differ(file_a: str, file_b: str) -> bool:
+    """Returns True if two files have different size or content."""
+    if not (os.path.exists(file_a) and os.path.exists(file_b)):
+        return True
+    if os.path.getsize(file_a) != os.path.getsize(file_b):
+        return True
+    # Compare in 64KB chunks
+    with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
+        while True:
+            ca = fa.read(65536)
+            cb = fb.read(65536)
+            if ca != cb:
+                return True
+            if not ca:
+                break
+    return False
+
+def migrate_storage(source_root: str, target_root: str):
+    """
+    Safely migrates SQLite database and audio files when PERSISTENT_DATA_DIR is configured.
+    - Idempotent: If migration was previously completed (marker present), cleanly skips.
+    - Conflict check: Inspects database and media files (uploads, outputs, voices) before copying.
+      If destination files already exist and differ in content from source, halts safely before changing anything.
+    - Preserves file references and updates DB stored paths.
+    - Writes a persistent '.migration_complete' marker on success.
+    """
+    source_root = os.path.abspath(source_root)
+    target_root = os.path.abspath(target_root)
+    if source_root == target_root:
+        return
+
+    marker_file = os.path.join(target_root, ".migration_complete")
+    if os.path.exists(marker_file):
+        logger.info(f"Storage migration marker found in '{target_root}'. Migration already completed; skipping.")
+        return
+
+    src_db = os.path.join(source_root, "voices", "studio.db")
+    dst_db = os.path.join(target_root, "voices", "studio.db")
+
+    # 1. Conflict detection phase: Database check
+    if os.path.exists(src_db) and os.path.exists(dst_db):
+        if os.path.getsize(src_db) > 0 and os.path.getsize(dst_db) > 0:
+            if _file_contents_differ(src_db, dst_db):
+                msg = (
+                    f"Storage Migration Conflict: Persistent destination database '{dst_db}' already exists "
+                    f"with differing content from source '{src_db}'. Cannot safely overwrite or merge. "
+                    f"To preserve existing data, please inspect or backup the destination before starting."
+                )
+                logger.error(msg)
+                raise RuntimeError(msg)
+
+    # 2. Conflict detection phase: Media files check (before copying anything)
+    for subfolder in ["voices", "uploads", "outputs"]:
+        src_sub = os.path.join(source_root, subfolder)
+        dst_sub = os.path.join(target_root, subfolder)
+        if os.path.exists(src_sub):
+            for fname in os.listdir(src_sub):
+                s_file = os.path.join(src_sub, fname)
+                d_file = os.path.join(dst_sub, fname)
+                if os.path.isfile(s_file) and os.path.exists(d_file):
+                    if _file_contents_differ(s_file, d_file):
+                        msg = (
+                            f"Storage Migration Media Conflict: Destination file '{d_file}' already exists "
+                            f"with differing content from source '{s_file}'. Cannot proceed safely without risking data corruption."
+                        )
+                        logger.error(msg)
+                        raise RuntimeError(msg)
+
+    # 3. Copy / Migration phase
+    # Migrate voices directory
+    src_voices = os.path.join(source_root, "voices")
+    dst_voices = os.path.join(target_root, "voices")
+    os.makedirs(dst_voices, exist_ok=True)
+    if os.path.exists(src_voices):
+        for fname in os.listdir(src_voices):
+            s_file = os.path.join(src_voices, fname)
+            d_file = os.path.join(dst_voices, fname)
+            if os.path.isfile(s_file):
+                if not os.path.exists(d_file):
+                    shutil.copy2(s_file, d_file)
+                elif _file_contents_differ(s_file, d_file) and fname == "studio.db" and os.path.getsize(d_file) == 0:
+                    shutil.copy2(s_file, d_file)
+
+    # Migrate uploads directory
+    src_uploads = os.path.join(source_root, "uploads")
+    dst_uploads = os.path.join(target_root, "uploads")
+    os.makedirs(dst_uploads, exist_ok=True)
+    if os.path.exists(src_uploads):
+        for fname in os.listdir(src_uploads):
+            s_file = os.path.join(src_uploads, fname)
+            d_file = os.path.join(dst_uploads, fname)
+            if os.path.isfile(s_file) and not os.path.exists(d_file):
+                shutil.copy2(s_file, d_file)
+
+    # Migrate outputs directory
+    src_outputs = os.path.join(source_root, "outputs")
+    dst_outputs = os.path.join(target_root, "outputs")
+    os.makedirs(dst_outputs, exist_ok=True)
+    if os.path.exists(src_outputs):
+        for fname in os.listdir(src_outputs):
+            s_file = os.path.join(src_outputs, fname)
+            d_file = os.path.join(dst_outputs, fname)
+            if os.path.isfile(s_file) and not os.path.exists(d_file):
+                shutil.copy2(s_file, d_file)
+
+    # 4. Update database file paths to target_root if dst_db exists
+    if os.path.exists(dst_db):
+        try:
+            conn = sqlite3.connect(dst_db)
+            c = conn.cursor()
+            # Update cloned_voices file_path if pointing to source_root
+            c.execute("SELECT id, file_path FROM cloned_voices")
+            for row in c.fetchall():
+                v_id, old_fp = row[0], row[1]
+                if old_fp and source_root in old_fp:
+                    new_fp = old_fp.replace(source_root, target_root)
+                    c.execute("UPDATE cloned_voices SET file_path = ? WHERE id = ?", (new_fp, v_id))
+            # Update generated_audio filepath if pointing to source_root
+            c.execute("SELECT id, filepath FROM generated_audio")
+            for row in c.fetchall():
+                a_id, old_ap = row[0], row[1]
+                if old_ap and source_root in old_ap:
+                    new_ap = old_ap.replace(source_root, target_root)
+                    c.execute("UPDATE generated_audio SET filepath = ? WHERE id = ?", (new_ap, a_id))
+            conn.commit()
+            conn.close()
+            logger.info(f"Successfully migrated storage from '{source_root}' to persistent directory '{target_root}'.")
+        except Exception as e:
+            logger.warning(f"Storage path update warning during migration: {e}")
+
+    # 5. Write migration completion marker
+    try:
+        with open(marker_file, "w", encoding="utf-8") as mf:
+            mf.write(f"migrated_from={source_root}\ntimestamp={time.time()}\n")
+    except Exception as e:
+        logger.warning(f"Could not write migration marker file: {e}")
+
+PERSISTENT_DATA_DIR = os.getenv("PERSISTENT_DATA_DIR", "").strip()
+if PERSISTENT_DATA_DIR:
+    DATA_ROOT = os.path.abspath(PERSISTENT_DATA_DIR)
+    # Perform safe migration if source has existing data and target is distinct
+    if os.path.exists(os.path.join(BASE_DIR, "voices", "studio.db")):
+        migrate_storage(BASE_DIR, DATA_ROOT)
+else:
+    DATA_ROOT = BASE_DIR
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
-VOICES_DIR = os.path.join(BASE_DIR, "voices")
-OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+UPLOADS_DIR = os.path.join(DATA_ROOT, "uploads")
+VOICES_DIR = os.path.join(DATA_ROOT, "voices")
+OUTPUTS_DIR = os.path.join(DATA_ROOT, "outputs")
 DB_FILE = os.path.join(VOICES_DIR, "studio.db")
 VOICES_CACHE_FILE = os.path.join(VOICES_DIR, "us_voices_cache.json")
 
@@ -84,26 +234,49 @@ for directory in [STATIC_DIR, UPLOADS_DIR, VOICES_DIR, OUTPUTS_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 # JWT & Session Configurations
-JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-development-key-change-in-production-32chars").strip()
+_raw_jwt_secret = os.getenv("JWT_SECRET", "").strip()
+IS_PRODUCTION = os.getenv("RENDER", "").lower() == "true" or os.getenv("ENVIRONMENT", "").lower() == "production"
+
+# In production, require an explicitly configured strong JWT_SECRET
+KNOWN_DEV_SECRETS = {
+    "super-secret-development-key-change-in-production-32chars",
+    "generate a 32+ character random secret string",
+    "your_long_random_jwt_secret_hex_string_here"
+}
+if IS_PRODUCTION:
+    if not _raw_jwt_secret or len(_raw_jwt_secret) < 32 or _raw_jwt_secret.lower() in KNOWN_DEV_SECRETS:
+        logger.critical("FATAL: JWT_SECRET environment variable is missing, too short (<32 chars), or using a placeholder in production!")
+        raise RuntimeError("Production startup halted: Strong JWT_SECRET (min 32 chars) must be configured in environment variables.")
+
+JWT_SECRET = _raw_jwt_secret if _raw_jwt_secret else "fallback-dev-secret-key-32chars-for-local-testing-only"
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256").strip()
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "72"))
 COOKIE_NAME = "bigg_session_token"
 
-# In-Memory Sliding-Window Rate Limiter
-# (IP or Key -> List of monotonic request timestamps)
+# Bounded, Cleanable In-Memory Sliding-Window Rate Limiter
 RATE_LIMIT_STORE: Dict[str, List[float]] = defaultdict(list)
+_LAST_RATE_LIMIT_PURGE = time.monotonic()
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: float):
     """
     Enforces a sliding window rate limit per client key (e.g. client IP or action prefix).
+    Bounded memory store with periodic automatic pruning.
     Raises HTTPException(429) if exceeded.
     """
     if os.getenv("TESTING") == "1":
         return
 
+    global _LAST_RATE_LIMIT_PURGE
     now = time.monotonic()
+
+    # Periodic global purge of dead keys every 5 minutes to prevent memory leaks
+    if now - _LAST_RATE_LIMIT_PURGE > 300:
+        dead_keys = [k for k, ts in RATE_LIMIT_STORE.items() if not ts or (now - ts[-1] > 3600)]
+        for k in dead_keys:
+            del RATE_LIMIT_STORE[k]
+        _LAST_RATE_LIMIT_PURGE = now
+
     timestamps = RATE_LIMIT_STORE[key]
-    # Prune timestamps outside window
     cutoff = now - window_seconds
     while timestamps and timestamps[0] < cutoff:
         timestamps.pop(0)
@@ -319,7 +492,49 @@ async def cleanup_stale_files():
             logger.warning(f"Error in automated cleanup task: {e}")
         await asyncio.sleep(3600)
 
-# Email Dispatch
+# Email Dispatch & Verification
+def check_smtp_health() -> Dict[str, Any]:
+    """Diagnostic check for SMTP configuration without exposing secrets."""
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+
+    if not smtp_user or not smtp_pass:
+        return {
+            "configured": False,
+            "host": smtp_host,
+            "port": smtp_port,
+            "user_configured": bool(smtp_user),
+            "pass_configured": bool(smtp_pass),
+            "status": "Missing SMTP_USER or SMTP_PASSWORD environment variables."
+        }
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=8) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_pass)
+        return {
+            "configured": True,
+            "host": smtp_host,
+            "port": smtp_port,
+            "user_configured": True,
+            "pass_configured": True,
+            "status": "SMTP credentials authenticated successfully with mail server."
+        }
+    except Exception as e:
+        logger.warning(f"SMTP Health verification failed: {type(e).__name__}")
+        return {
+            "configured": False,
+            "host": smtp_host,
+            "port": smtp_port,
+            "user_configured": True,
+            "pass_configured": True,
+            "status": f"SMTP authentication failed: {type(e).__name__}"
+        }
+
 def send_smtp_email(to_email: str, subject: str, html_content: str, text_content: str) -> dict:
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
@@ -327,7 +542,7 @@ def send_smtp_email(to_email: str, subject: str, html_content: str, text_content
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
 
     if not smtp_user or not smtp_pass:
-        logger.warning(f"SMTP email skipped for {to_email}: SMTP_USER or SMTP_PASSWORD not configured.")
+        logger.warning(f"SMTP delivery skipped for {to_email}: SMTP_USER or SMTP_PASSWORD not configured in environment.")
         return {"sent": False, "reason": "SMTP credentials not configured."}
 
     try:
@@ -348,10 +563,11 @@ def send_smtp_email(to_email: str, subject: str, html_content: str, text_content
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [to_email], msg.as_string())
 
-        return {"sent": True, "reason": "Email dispatched."}
+        logger.info(f"Email successfully dispatched to {to_email}")
+        return {"sent": True, "reason": "Email dispatched successfully."}
     except Exception as e:
         logger.error(f"Failed sending email to {to_email}: {type(e).__name__}")
-        return {"sent": False, "reason": "SMTP transport error."}
+        return {"sent": False, "reason": f"SMTP transport error: {type(e).__name__}"}
 
 # Curated High-Fidelity Human Pro Voices
 CURATED_HUMAN_VOICES = [
@@ -435,55 +651,112 @@ CURATED_HUMAN_VOICES = [
 ]
 
 # Audio Processing Helpers
+def safe_remove_managed_file(file_path: str, allowed_dirs: Optional[List[str]] = None) -> bool:
+    """
+    Safely deletes a file only if its canonical path is located inside allowed managed directories.
+    Prevents path traversal or accidental deletion outside uploads/outputs.
+    """
+    if not file_path:
+        return False
+    if allowed_dirs is None:
+        allowed_dirs = [UPLOADS_DIR, OUTPUTS_DIR]
+
+    canonical_target = os.path.realpath(file_path)
+    # Check if target is inside any of allowed_dirs
+    is_safe = False
+    for ad in allowed_dirs:
+        canonical_dir = os.path.realpath(ad)
+        try:
+            common = os.path.commonpath([canonical_target, canonical_dir])
+            if common == canonical_dir and canonical_target != canonical_dir:
+                is_safe = True
+                break
+        except ValueError:
+            continue
+
+    if not is_safe:
+        logger.warning(f"File deletion rejected: '{file_path}' is outside managed directories: {allowed_dirs}")
+        return False
+
+    if os.path.isfile(canonical_target):
+        try:
+            os.remove(canonical_target)
+            return True
+        except Exception as e:
+            logger.warning(f"Could not remove file '{canonical_target}': {e}")
+    return False
+
 def preprocess_reference_audio(input_path: str, output_path: str) -> str:
+    """
+    Strict audio validation and normalization.
+    Raises ValueError if input is not valid non-empty audio.
+    """
     try:
         data, sr_val = sf.read(input_path)
-        if len(data.shape) > 1:
-            data = data.mean(axis=1)
-        data = data - np.mean(data)
-        peak = np.max(np.abs(data))
-        if peak > 0:
-            data = (data / peak) * 0.95
-        sf.write(output_path, data, sr_val)
-        return output_path
-    except Exception:
-        return input_path
+    except Exception as e:
+        raise ValueError(f"Could not read audio file: {e}")
+
+    if data is None or len(data) == 0:
+        raise ValueError("Audio data is empty.")
+
+    if len(data.shape) > 1:
+        data = data.mean(axis=1)
+
+    # Check for non-zero audio content
+    peak = np.max(np.abs(data))
+    if peak <= 1e-6:
+        raise ValueError("Audio file contains only silence or near-zero samples.")
+
+    data = data - np.mean(data)
+    data = (data / peak) * 0.95
+    sf.write(output_path, data, sr_val)
+    return output_path
 
 def analyze_audio_profile(file_path: str) -> dict:
+    """
+    Analyzes valid acoustic profile.
+    Raises ValueError if file cannot be decoded as valid non-empty audio.
+    """
     try:
         data, samplerate = sf.read(file_path)
-        if len(data.shape) > 1:
-            data = data.mean(axis=1)
-        energy = float(np.sqrt(np.mean(data**2)))
-        corr = np.correlate(data[:min(len(data), 16000)], data[:min(len(data), 16000)], mode='full')
-        corr = corr[len(corr)//2:]
-        d = np.diff(corr)
-        start = np.where(d > 0)[0]
-        if len(start) > 0:
-            peak = np.argmax(corr[start[0]:]) + start[0]
-            estimated_pitch = float(samplerate / peak) if peak > 0 else 180.0
-        else:
-            estimated_pitch = 180.0
-        duration = float(len(data) / samplerate)
-        gender = "Female" if estimated_pitch > 165 else "Male"
-        pitch_shift_pct = int(np.clip(((estimated_pitch - 160) / 160) * 40, -40, 40))
-        return {
-            "duration": round(duration, 2),
-            "samplerate": samplerate,
-            "estimated_pitch_hz": round(estimated_pitch, 1),
-            "gender_affinity": gender,
-            "recommended_pitch_mod": f"{'+' if pitch_shift_pct >= 0 else ''}{pitch_shift_pct}%",
-            "energy_db": round(20 * np.log10(energy + 1e-6), 1)
-        }
-    except Exception:
-        return {
-            "duration": 5.0,
-            "samplerate": 24000,
-            "estimated_pitch_hz": 180.0,
-            "gender_affinity": "Neutral",
-            "recommended_pitch_mod": "+0%",
-            "energy_db": -20.0
-        }
+    except Exception as e:
+        raise ValueError(f"Audio profile decoding failed: {e}")
+
+    if data is None or len(data) == 0:
+        raise ValueError("Audio file for profile analysis is empty.")
+
+    if len(data.shape) > 1:
+        data = data.mean(axis=1)
+
+    duration = float(len(data) / samplerate)
+    if duration < 0.1:
+        raise ValueError(f"Audio duration {duration:.2f}s is too short to clone.")
+
+    energy = float(np.sqrt(np.mean(data**2)))
+    if energy <= 1e-6:
+        raise ValueError("Audio file contains no audible acoustic energy.")
+
+    corr = np.correlate(data[:min(len(data), 16000)], data[:min(len(data), 16000)], mode='full')
+    corr = corr[len(corr)//2:]
+    d = np.diff(corr)
+    start = np.where(d > 0)[0]
+    if len(start) > 0:
+        peak = np.argmax(corr[start[0]:]) + start[0]
+        estimated_pitch = float(samplerate / peak) if peak > 0 else 180.0
+    else:
+        estimated_pitch = 180.0
+
+    gender = "Female" if estimated_pitch > 165 else "Male"
+    pitch_shift_pct = int(np.clip(((estimated_pitch - 160) / 160) * 40, -40, 40))
+
+    return {
+        "duration": round(duration, 2),
+        "samplerate": samplerate,
+        "estimated_pitch_hz": round(estimated_pitch, 1),
+        "gender_affinity": gender,
+        "recommended_pitch_mod": f"{'+' if pitch_shift_pct >= 0 else ''}{pitch_shift_pct}%",
+        "energy_db": round(20 * np.log10(energy + 1e-6), 1)
+    }
 
 ALLOWED_EFFECTS = {"none", "reverb", "telephone", "radio", "bass_boost", "cyberpunk"}
 
@@ -658,11 +931,10 @@ def auth_signup(req: SignupRequest, request: Request, response: Response):
 
     session_token = create_session_jwt(user_id=user_id, username=u, role="user")
 
-    # Set secure, HTTP-only session cookie
+    # Set secure, HTTP-only session cookie (JWT is not exposed in JSON payload)
     is_https = request.url.scheme == "https"
     json_resp = JSONResponse({
         "success": True,
-        "token": session_token,
         "user": {
             "id": user_id,
             "username": u,
@@ -720,7 +992,6 @@ def auth_login(req: LoginRequest, request: Request, response: Response):
     is_https = request.url.scheme == "https"
     json_resp = JSONResponse({
         "success": True,
-        "token": session_token,
         "user": {
             "id": user["id"],
             "username": user["username"],
@@ -765,8 +1036,35 @@ def auth_get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
 # PRIORITY 2: Password Reset & Support Endpoints
 # -------------------------------------------------------------
 
+def _send_reset_email_worker(email: str, username: str, reset_code: str):
+    """Background worker to send password reset emails outside the request response path."""
+    escaped_user = html.escape(username)
+    html_email = f"""
+    <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 30px; border-radius: 10px; max-width: 520px; margin: 0 auto; border: 1px solid #1e293b;">
+        <h2 style="color: #6366f1; margin-top: 0;">BIG G'S VOICE CLONER PRO</h2>
+        <p style="font-size: 15px; color: #cbd5e1;">Hello <strong>{escaped_user}</strong>,</p>
+        <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">You requested a password reset for your Voice Cloner Pro account. Use the 6-digit verification code below to set a new password:</p>
+        <div style="text-align: center; margin: 25px 0;">
+            <span style="display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; background: #1e293b; padding: 12px 24px; border-radius: 8px; border: 1px solid #3b82f6;">{reset_code}</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">This code expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
+        <hr style="border: 0; border-top: 1px solid #1e293b; margin: 20px 0;">
+        <p style="font-size: 11px; color: #475569; text-align: center;">BIG G Voice Cloner Pro • Studio AI Audio Suite</p>
+    </div>
+    """
+    text_email = f"Your BIG G Voice Cloner Pro verification code is: {reset_code}\nThis code expires in 30 minutes."
+
+    delivery = send_smtp_email(
+        to_email=email,
+        subject=f"{reset_code} is your Voice Cloner Pro reset code",
+        html_content=html_email,
+        text_content=text_email
+    )
+    if not delivery.get("sent", False):
+        logger.warning(f"Background password reset delivery failure for account: {delivery.get('reason')}")
+
 @app.post("/api/auth/forgot-password")
-def auth_forgot_password(req: ForgotPasswordRequest, request: Request):
+def auth_forgot_password(req: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks):
     client_ip = request.client.host if request.client else "unknown"
     check_rate_limit(f"forgot:{client_ip}", max_requests=4, window_seconds=60)
 
@@ -802,29 +1100,14 @@ def auth_forgot_password(req: ForgotPasswordRequest, request: Request):
     conn.commit()
     conn.close()
 
-    escaped_user = html.escape(user["username"])
-    html_email = f"""
-    <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 30px; border-radius: 10px; max-width: 520px; margin: 0 auto; border: 1px solid #1e293b;">
-        <h2 style="color: #6366f1; margin-top: 0;">BIG G'S VOICE CLONER PRO</h2>
-        <p style="font-size: 15px; color: #cbd5e1;">Hello <strong>{escaped_user}</strong>,</p>
-        <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">You requested a password reset for your Voice Cloner Pro account. Use the 6-digit verification code below to set a new password:</p>
-        <div style="text-align: center; margin: 25px 0;">
-            <span style="display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; background: #1e293b; padding: 12px 24px; border-radius: 8px; border: 1px solid #3b82f6;">{reset_code}</span>
-        </div>
-        <p style="font-size: 13px; color: #64748b;">This code expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
-        <hr style="border: 0; border-top: 1px solid #1e293b; margin: 20px 0;">
-        <p style="font-size: 11px; color: #475569; text-align: center;">BIG G Voice Cloner Pro • Studio AI Audio Suite</p>
-    </div>
-    """
-    text_email = f"Your BIG G Voice Cloner Pro verification code is: {reset_code}\nThis code expires in 30 minutes."
-
-    # Dispatch email (Code is NEVER returned in HTTP JSON response)
-    send_smtp_email(
-        to_email=e,
-        subject=f"{reset_code} is your Voice Cloner Pro reset code",
-        html_content=html_email,
-        text_content=text_email
+    # Dispatch email in a background worker thread outside the HTTP response path so registered
+    # and unregistered email addresses return with identical timing without leaking SMTP latency
+    worker_thread = threading.Thread(
+        target=_send_reset_email_worker,
+        args=(e, user["username"], reset_code),
+        daemon=True
     )
+    worker_thread.start()
 
     return generic_resp
 
@@ -885,6 +1168,9 @@ def create_support_ticket(
     req: CreateTicketRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
+    # Enforce reasonable per-user rate limit (e.g., max 5 tickets per 10 minutes)
+    check_rate_limit(f"ticket:{current_user['id']}", max_requests=5, window_seconds=600)
+
     clean_cat = html.escape(req.category.strip())
     clean_subj = html.escape(req.subject.strip())
     clean_msg = html.escape(req.message.strip())
@@ -973,11 +1259,12 @@ async def clone_voice(
     try:
         final_ref_path = preprocess_reference_audio(raw_path, clean_path)
         profile = analyze_audio_profile(final_ref_path)
+        # Successfully preprocessed: remove raw sample since clean_path is used as reference
+        if raw_path != clean_path:
+            safe_remove_managed_file(raw_path, allowed_dirs=[UPLOADS_DIR])
     except Exception as e:
-        if os.path.exists(raw_path):
-            os.remove(raw_path)
-        if os.path.exists(clean_path):
-            os.remove(clean_path)
+        safe_remove_managed_file(raw_path, allowed_dirs=[UPLOADS_DIR])
+        safe_remove_managed_file(clean_path, allowed_dirs=[UPLOADS_DIR])
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid or readable audio track.")
 
     base_voice = "en-US-AvaMultilingualNeural" if profile.get("gender_affinity") == "Female" else "en-US-AndrewMultilingualNeural"
@@ -1062,11 +1349,13 @@ def delete_cloned_voice(voice_id: str, current_user: Dict[str, Any] = Depends(ge
         raise HTTPException(status_code=403, detail="Permission denied. You do not own this voice model.")
 
     file_path = voice["file_path"]
-    if file_path and os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            logger.warning(f"Could not remove reference audio file: {e}")
+    if file_path:
+        safe_remove_managed_file(file_path, allowed_dirs=[UPLOADS_DIR, OUTPUTS_DIR])
+        # Also clean any matching raw file if it exists
+        base_root, _ = os.path.splitext(file_path)
+        raw_guess = base_root.replace("_clean", "_raw")
+        for ext in ALLOWED_AUDIO_EXTENSIONS:
+            safe_remove_managed_file(f"{raw_guess}{ext}", allowed_dirs=[UPLOADS_DIR])
 
     c.execute("DELETE FROM cloned_voices WHERE id = ?", (voice_id,))
     conn.commit()
@@ -1152,19 +1441,19 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
     conn = get_db_connection()
     c = conn.cursor()
 
-    # Atomic credit check & deduction before generation
+    # Atomic credit check & deduction before generation with row locking / atomic balance update
     if not is_admin:
-        c.execute("SELECT credits FROM users WHERE id = ?", (user_id,))
-        user_row = c.fetchone()
-        if not user_row or user_row["credits"] < tokens_required:
+        c.execute("UPDATE users SET credits = credits - ? WHERE id = ? AND credits >= ?", (tokens_required, user_id, tokens_required))
+        conn.commit()
+        if c.rowcount == 0:
+            c.execute("SELECT credits FROM users WHERE id = ?", (user_id,))
+            user_row = c.fetchone()
+            curr_credits = user_row["credits"] if user_row else 0
             conn.close()
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Insufficient tokens. You have {user_row['credits'] if user_row else 0:,} tokens, but this generation requires {tokens_required:,} tokens."
+                detail=f"Insufficient tokens. You have {curr_credits:,} tokens, but this generation requires {tokens_required:,} tokens."
             )
-        # Deduct atomically
-        c.execute("UPDATE users SET credits = credits - ? WHERE id = ?", (tokens_required, user_id))
-        conn.commit()
 
     conn.close()
 
@@ -1346,54 +1635,106 @@ async def generate_dialogue(req: DialogueRequest, current_user: Dict[str, Any] =
     combined_segments = []
     sample_rate = 24000
     total_tokens_spent = 0
+    generated_line_files = []
+    completed_lines_tokens = 0
+    dialogue_filename = None
 
-    for line in req.lines:
-        line_tts = TTSRequest(text=line.text, voice=line.speaker, engine="auto")
-        tts_res = await generate_speech(line_tts, current_user=current_user)
-        line_data = json.loads(tts_res.body.decode("utf-8"))
+    try:
+        for line in req.lines:
+            line_tts = TTSRequest(text=line.text, voice=line.speaker, engine="auto")
+            tts_res = await generate_speech(line_tts, current_user=current_user)
+            line_data = json.loads(tts_res.body.decode("utf-8"))
 
-        total_tokens_spent += line_data.get("tokens_spent", 0)
-        file_path = os.path.join(OUTPUTS_DIR, line_data["filename"])
-        if os.path.exists(file_path):
-            audio_data, sr_val = sf.read(file_path)
-            if len(audio_data.shape) > 1:
-                audio_data = audio_data.mean(axis=1)
-            combined_segments.append(audio_data)
-            # Add subtle natural conversational pause (0.35s)
-            pause = np.zeros(int(sr_val * 0.35))
-            combined_segments.append(pause)
-            sample_rate = sr_val
+            line_cost = line_data.get("tokens_spent", 0)
+            total_tokens_spent += line_cost
+            completed_lines_tokens += line_cost
 
-    if not combined_segments:
-        raise HTTPException(status_code=500, detail="Multi-speaker synthesis failed.")
+            fname = line_data.get("filename")
+            if fname:
+                generated_line_files.append(fname)
+            file_path = os.path.join(OUTPUTS_DIR, fname)
+            if os.path.exists(file_path):
+                audio_data, sr_val = sf.read(file_path)
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data.mean(axis=1)
+                combined_segments.append(audio_data)
+                # Add subtle natural conversational pause (0.35s)
+                pause = np.zeros(int(sr_val * 0.35))
+                combined_segments.append(pause)
+                sample_rate = sr_val
 
-    merged_data = np.concatenate(combined_segments)
-    dialogue_filename = f"dialogue_{uuid.uuid4().hex[:12]}.wav"
-    dialogue_path = os.path.join(OUTPUTS_DIR, dialogue_filename)
-    sf.write(dialogue_path, merged_data, sample_rate)
+        if not combined_segments:
+            raise HTTPException(status_code=500, detail="Multi-speaker synthesis produced no audio.")
 
-    # Record ownership
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO generated_audio (id, user_id, filename, filepath, voice_name, engine_used, characters_count, tokens_charged)
-        VALUES (?, ?, ?, ?, 'Multi-Speaker Ensemble', 'Multi-Track Stitcher', 0, ?)
-        """,
-        (uuid.uuid4().hex[:12], current_user["id"], dialogue_filename, dialogue_path, total_tokens_spent)
-    )
-    c.execute("SELECT credits FROM users WHERE id = ?", (current_user["id"],))
-    remaining_credits = c.fetchone()["credits"]
-    conn.commit()
-    conn.close()
+        merged_data = np.concatenate(combined_segments)
+        dialogue_filename = f"dialogue_{uuid.uuid4().hex[:12]}.wav"
+        dialogue_path = os.path.join(OUTPUTS_DIR, dialogue_filename)
+        sf.write(dialogue_path, merged_data, sample_rate)
 
-    return JSONResponse({
-        "success": True,
-        "audio_url": f"/api/audio/stream/{dialogue_filename}",
-        "filename": dialogue_filename,
-        "lines_rendered": len(req.lines),
-        "credits_remaining": remaining_credits
-    })
+        # Record ownership
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO generated_audio (id, user_id, filename, filepath, voice_name, engine_used, characters_count, tokens_charged)
+            VALUES (?, ?, ?, ?, 'Multi-Speaker Ensemble', 'Multi-Track Stitcher', 0, ?)
+            """,
+            (uuid.uuid4().hex[:12], current_user["id"], dialogue_filename, dialogue_path, total_tokens_spent)
+        )
+        c.execute("SELECT credits FROM users WHERE id = ?", (current_user["id"],))
+        remaining_credits = c.fetchone()["credits"]
+        conn.commit()
+        conn.close()
+
+        # Clean up intermediate line files and their database records so outputs and DB only hold the master track
+        if generated_line_files:
+            conn = get_db_connection()
+            c = conn.cursor()
+            placeholders = ",".join("?" * len(generated_line_files))
+            c.execute(f"DELETE FROM generated_audio WHERE filename IN ({placeholders})", generated_line_files)
+            conn.commit()
+            conn.close()
+
+            for f in generated_line_files:
+                try:
+                    safe_remove_managed_file(os.path.join(OUTPUTS_DIR, f), allowed_dirs=[OUTPUTS_DIR])
+                except Exception:
+                    pass
+
+        return JSONResponse({
+            "success": True,
+            "audio_url": f"/api/audio/stream/{dialogue_filename}",
+            "filename": dialogue_filename,
+            "lines_rendered": len(req.lines),
+            "credits_remaining": remaining_credits
+        })
+
+    except Exception as e:
+        logger.error(f"Dialogue generation failed: {e}")
+        # Clean up dialogue master track if created
+        if dialogue_filename:
+            safe_remove_managed_file(os.path.join(OUTPUTS_DIR, dialogue_filename), allowed_dirs=[OUTPUTS_DIR])
+
+        # Clean up any generated line temp files
+        for f in generated_line_files:
+            safe_remove_managed_file(os.path.join(OUTPUTS_DIR, f), allowed_dirs=[OUTPUTS_DIR])
+
+        # Remove DB records and refund credits for lines that succeeded before failure
+        conn = get_db_connection()
+        c = conn.cursor()
+        if generated_line_files:
+            placeholders = ",".join("?" * len(generated_line_files))
+            c.execute(f"DELETE FROM generated_audio WHERE filename IN ({placeholders})", generated_line_files)
+
+        if completed_lines_tokens > 0 and current_user["role"] != "admin":
+            c.execute("UPDATE users SET credits = credits + ? WHERE id = ?", (completed_lines_tokens, current_user["id"]))
+            logger.info(f"Refunded {completed_lines_tokens} tokens for completed lines to user #{current_user['id']} due to dialogue failure.")
+        conn.commit()
+        conn.close()
+
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail="Multi-speaker dialogue rendering encountered a failure.")
 
 @app.post("/api/transcribe")
 async def transcribe_audio_file(
@@ -1490,10 +1831,35 @@ def admin_delete_user(
 ):
     conn = get_db_connection()
     c = conn.cursor()
+
+    # Find and delete all cloned voices and associated files for this user
+    c.execute("SELECT id, file_path FROM cloned_voices WHERE user_id = ?", (target_user_id,))
+    for row in c.fetchall():
+        fp = row["file_path"]
+        if fp:
+            safe_remove_managed_file(fp, allowed_dirs=[UPLOADS_DIR, OUTPUTS_DIR])
+            base_root, _ = os.path.splitext(fp)
+            raw_guess = base_root.replace("_clean", "_raw")
+            for ext in ALLOWED_AUDIO_EXTENSIONS:
+                safe_remove_managed_file(f"{raw_guess}{ext}", allowed_dirs=[UPLOADS_DIR])
+
+    # Find and delete all generated audio files for this user
+    c.execute("SELECT filepath FROM generated_audio WHERE user_id = ?", (target_user_id,))
+    for row in c.fetchall():
+        afp = row["filepath"]
+        if afp:
+            safe_remove_managed_file(afp, allowed_dirs=[OUTPUTS_DIR])
+
     c.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (target_user_id,))
     conn.commit()
     conn.close()
-    return JSONResponse({"success": True, "message": "User account deleted."})
+    return JSONResponse({"success": True, "message": "User account and associated audio deleted."})
+
+@app.get("/api/admin/smtp-health")
+def admin_smtp_health_check(admin_user: Dict[str, Any] = Depends(require_admin)):
+    """Safe SMTP diagnostics for platform admin."""
+    health = check_smtp_health()
+    return JSONResponse({"success": True, "smtp": health})
 
 @app.get("/api/admin/tickets")
 def admin_get_all_tickets(admin_user: Dict[str, Any] = Depends(require_admin)):

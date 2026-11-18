@@ -2,14 +2,36 @@ services:
   - type: web
     name: big-g-voice-cloner-pro
     env: python
-    plan: free
+    plan: starter # Starter plan with persistent disk ensures data survives all redeployments
     region: frankfurt # Low latency to West Africa / Nigeria
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: studio-storage
+      mountPath: /var/data
+      sizeGB: 10
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PERSISTENT_DATA_DIR
+        value: /var/data
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://big-g-voice-cloner-pro.onrender.com
       - key: FISH_AUDIO_API_KEY
         sync: false
       - key: FISH_AUDIO_MODEL
         value: s2.1-pro-free
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false

@@ -11,15 +11,14 @@ Render free web services operate on an **ephemeral disk**. Every time you trigge
 2. Any local files modified or created during runtime (such as `voices/studio.db` or files in `voices/` and `outputs/`) are discarded.
 3. This caused the local SQLite database to be reinitialized, losing user accounts and uploaded samples.
 
-### Solutions for Persistent Data on Render:
-- **Option A (Recommended for SQLite / Quickest Setup): Render Persistent Disk**
-  - In your Render Web Service dashboard, go to **Disks** -> **Add Disk**.
-  - Mount Path: `/var/data` (e.g. Size: 10GB - 50GB).
-  - Update `render.yaml` or set environment variable `PERSISTENT_DATA_DIR=/var/data`. The app will store `studio.db` and uploaded reference voices inside this mount point, surviving all rebuilds and redeployments.
-- **Option B (Recommended for Enterprise Scaling): Render Managed PostgreSQL + Cloudflare R2 / AWS S3**
-  - Spin up a free or starter **Render PostgreSQL database**.
-  - Set `DATABASE_URL` in environment variables.
-  - Store reference and generated audio in an S3-compatible bucket (e.g. Cloudflare R2 has zero egress fees).
+### Supported Storage Setup on Render:
+- **Render Persistent Disk (Supported & Automated):**
+  - The application uses embedded SQLite (`studio.db`) and local filesystem storage for cloned voices and generated tracks.
+  - To make your data survive redeployments, attach a **Render Persistent Disk** in your Render service dashboard under the **Disks** tab (available on Starter plan or above).
+  - Mount Path: `/var/data`
+  - Environment Variable: `PERSISTENT_DATA_DIR=/var/data`
+  - **Automatic Safe Migration:** When `PERSISTENT_DATA_DIR` is enabled on an existing deployment, the application automatically migrates `studio.db`, uploads, and outputs to `/var/data`, updates database file references, and refuses to overwrite conflicting existing data.
+  - *Note:* The application uses SQLite storage and does not support `DATABASE_URL` (external SQL engines like PostgreSQL are not configured in this release). Standard Render Free web tier instances use ephemeral disks where local data resets on rebuild unless a disk is attached.
 
 ---
 
@@ -40,8 +39,9 @@ In Render Dashboard -> **Environment**:
 | `FISH_AUDIO_MODEL` | Optional | Model identifier for Fish Audio | `s2.1-pro-free` |
 | `SMTP_HOST` | Optional | SMTP Host for password reset & ticket emails | `smtp.gmail.com` |
 | `SMTP_PORT` | Optional | SMTP Port (587 for TLS, 465 for SSL) | `587` |
-| `SMTP_USER` | Optional | SMTP Sender / Admin email address | `ifelexdan@gmail.com` |
-| `SMTP_PASSWORD` | Optional | 16-character Google App Password (2FA) | *(16-character App Password)* |
+| `SMTP_USER` | **Critical for Emails** | SMTP Sender / Gmail address | `ifelexdan@gmail.com` |
+| `SMTP_PASSWORD` | **Critical for Emails** | 16-character Google App Password (2FA) | *(16-character App Password from Google)* |
+| `PERSISTENT_DATA_DIR` | Optional | Persistent mount path (only if Render Disk is attached) | `/var/data` |
 
 > [!CAUTION]
 > Never commit actual passwords, API keys, or `.env` files to GitHub. Set them exclusively in the **Render Dashboard Environment** tab.

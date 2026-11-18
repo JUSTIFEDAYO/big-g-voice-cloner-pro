@@ -360,7 +360,7 @@
         <button type="submit" id="btn-signup-submit" class="btn-primary" style="margin-top: 4px; padding: 12px;">
           <span>Create Free Account</span>
         </button>
-        <div style="text-align: center; font-size: 0.72rem; color: var(--text-sub);">Includes 10,000 complimentary credits</div>
+        <div style="text-align: center; font-size: 0.72rem; color: var(--text-sub);">Includes 5,000 complimentary credits</div>
       </form>
 
       <!-- 3. FORGOT PASSWORD FLOW -->
@@ -864,16 +864,20 @@
       ]
     };
 
-    // API Helper with Automatic Token Headers and Credentials
+    // Safe escaping helper to prevent any HTML/XSS injection
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // API Helper with Automatic Cookie Credentials
     async function apiFetch(url, options = {}) {
       options.credentials = 'include';
-      if (!options.headers) options.headers = {};
-      const token = localStorage.getItem('bigg_auth_token');
-      if (token && !(options.headers instanceof Headers)) {
-        if (!options.headers['Authorization']) {
-          options.headers['Authorization'] = `Bearer ${token}`;
-        }
-      }
       return fetch(url, options);
     }
 
@@ -999,38 +1003,39 @@
       }
     }
 
-    function checkAuth() {
-      const token = localStorage.getItem('bigg_auth_token');
-      const userStr = localStorage.getItem('bigg_auth_user_obj');
+    async function checkAuth() {
+      try {
+        const res = await apiFetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          const user = data.user;
+          document.getElementById('auth-portal').style.display = 'none';
+          document.getElementById('main-header').classList.remove('hidden');
+          document.getElementById('main-content').classList.remove('hidden');
 
-      if (token && userStr) {
-        const user = JSON.parse(userStr);
-        document.getElementById('auth-portal').style.display = 'none';
-        document.getElementById('main-header').classList.remove('hidden');
-        document.getElementById('main-content').classList.remove('hidden');
+          document.getElementById('header-username').textContent = user.username;
+          const roleBadge = document.getElementById('header-role-badge');
+          roleBadge.textContent = user.role.toUpperCase();
 
-        document.getElementById('header-username').textContent = user.username;
-        const roleBadge = document.getElementById('header-role-badge');
-        roleBadge.textContent = user.role.toUpperCase();
+          const userTokens = user.credits !== undefined ? user.credits : 5000;
+          document.getElementById('header-user-tokens').textContent = userTokens.toLocaleString();
 
-        const userTokens = user.credits !== undefined ? user.credits : 5000;
-        document.getElementById('header-user-tokens').textContent = userTokens.toLocaleString();
-        refreshUserTokens(user.id);
-
-        if (user.role === 'admin') {
-          roleBadge.style.background = 'rgba(245, 158, 11, 0.2)';
-          roleBadge.style.color = '#f59e0b';
-          roleBadge.style.borderColor = '#f59e0b';
-          document.getElementById('tab-btn-admin').classList.remove('hidden');
-        } else {
-          document.getElementById('tab-btn-admin').classList.add('hidden');
+          if (user.role === 'admin') {
+            roleBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+            roleBadge.style.color = '#f59e0b';
+            roleBadge.style.borderColor = '#f59e0b';
+            document.getElementById('tab-btn-admin').classList.remove('hidden');
+          } else {
+            document.getElementById('tab-btn-admin').classList.add('hidden');
+          }
+          init();
+          return;
         }
-        init();
-      } else {
-        document.getElementById('auth-portal').style.display = 'flex';
-        document.getElementById('main-header').classList.add('hidden');
-        document.getElementById('main-content').classList.add('hidden');
-      }
+      } catch (e) {}
+
+      document.getElementById('auth-portal').style.display = 'flex';
+      document.getElementById('main-header').classList.add('hidden');
+      document.getElementById('main-content').classList.add('hidden');
     }
 
     async function handleLogin(e) {
@@ -1043,17 +1048,15 @@
       btn.innerHTML = `<span>⏳ Authenticating...</span>`;
 
       try {
-        const res = await fetch('/api/auth/login', {
+        const res = await apiFetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: user, password: pass })
         });
         const data = await res.json();
-        if (res.ok && data.success && data.token) {
-          localStorage.setItem('bigg_auth_token', data.token);
-          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(data.user));
+        if (res.ok && data.success) {
           showToast(`Welcome back, ${data.user.username}!`);
-          checkAuth();
+          await checkAuth();
         } else {
           showToast(data.detail || data.message || 'Invalid credentials', true);
         }
@@ -1076,17 +1079,15 @@
       btn.innerHTML = `<span>⏳ Registering Account...</span>`;
 
       try {
-        const res = await fetch('/api/auth/signup', {
+        const res = await apiFetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: user, email: email, password: pass })
         });
         const data = await res.json();
-        if (res.ok && data.success && data.token) {
-          localStorage.setItem('bigg_auth_token', data.token);
-          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(data.user));
+        if (res.ok && data.success) {
           showToast(`Welcome to the studio, ${data.user.username}!`);
-          checkAuth();
+          await checkAuth();
         } else {
           showToast(data.detail || data.message || 'Registration failed', true);
         }
@@ -1112,16 +1113,13 @@
           body: JSON.stringify({ email: email })
         });
         const data = await res.json();
-        if (data.email_sent) {
-          showToast('📧 Reset code emailed! Check your inbox (or spam folder).');
+        if (res.ok && data.success) {
+          showToast(data.message || '📧 If your email is registered, a 6-digit reset code has been dispatched.');
+          document.getElementById('step-forgot-email').classList.add('hidden');
+          document.getElementById('step-forgot-reset').classList.remove('hidden');
         } else {
-          showToast(data.message || 'Reset code generated');
-          if (data.reset_code) {
-            document.getElementById('reset-code').value = data.reset_code;
-          }
+          showToast(data.message || data.detail || 'Email delivery failed. Please contact the administrator.', true);
         }
-        document.getElementById('step-forgot-email').classList.add('hidden');
-        document.getElementById('step-forgot-reset').classList.remove('hidden');
       } catch (e) {
         showToast('Request failed: ' + e.message, true);
       } finally {
@@ -1159,10 +1157,8 @@
       try {
         await apiFetch('/api/auth/logout', { method: 'POST' });
       } catch (e) {}
-      localStorage.removeItem('bigg_auth_token');
-      localStorage.removeItem('bigg_auth_user_obj');
       showToast('Logged out.');
-      checkAuth();
+      await checkAuth();
     }
 
     async function refreshUserTokens() {
@@ -1171,10 +1167,6 @@
         const data = await res.json();
         if (data.success && data.user) {
           document.getElementById('header-user-tokens').textContent = data.user.credits.toLocaleString();
-          const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
-          userObj.credits = data.user.credits;
-          userObj.role = data.user.role;
-          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(userObj));
         }
       } catch (e) {
         console.error(e);
@@ -1307,7 +1299,6 @@
       const t = document.getElementById('param-temp').value / 100;
       const tp = document.getElementById('param-topp').value / 100;
       const c = parseInt(document.getElementById('param-chunk').value);
-      const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
 
       try {
         const res = await apiFetch('/api/tts', {
@@ -1331,8 +1322,6 @@
 
         if (data.credits_remaining !== undefined && data.credits_remaining !== null) {
           document.getElementById('header-user-tokens').textContent = data.credits_remaining.toLocaleString();
-          userObj.credits = data.credits_remaining;
-          localStorage.setItem('bigg_auth_user_obj', JSON.stringify(userObj));
         }
 
         const player = document.getElementById('audio-player');
@@ -1619,20 +1608,28 @@
         const res = await apiFetch('/api/support/my-tickets');
         const data = await res.json();
         if (data.tickets && data.tickets.length > 0) {
-          listEl.innerHTML = data.tickets.map(t => `
-            <div style="background: #101624; border: 1px solid #1f2a40; border-radius: 8px; padding: 10px 14px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-weight: 700; color: #fff;">#${t.id} [${t.category}] ${t.subject}</span>
-                <span style="padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; ${t.status === 'resolved' ? 'background: rgba(16, 185, 129, 0.2); color: #34d399;' : 'background: rgba(245, 158, 11, 0.2); color: #f59e0b;'}">${t.status.toUpperCase()}</span>
-              </div>
-              <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 6px;">${t.message}</div>
-              ${t.admin_response ? `
-                <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent-blue); padding: 8px 12px; border-radius: 4px; font-size: 0.78rem;">
-                  <strong style="color: var(--accent-blue);">Admin Response:</strong> ${t.admin_response}
+          listEl.innerHTML = data.tickets.map(t => {
+            const safeCategory = escapeHtml(t.category);
+            const safeSubject = escapeHtml(t.subject);
+            const safeMessage = escapeHtml(t.message);
+            const safeResponse = escapeHtml(t.admin_response);
+            const isResolved = t.status === 'resolved';
+
+            return `
+              <div style="background: #101624; border: 1px solid #1f2a40; border-radius: 8px; padding: 10px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-weight: 700; color: #fff;">#${t.id} [${safeCategory}] ${safeSubject}</span>
+                  <span style="padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; ${isResolved ? 'background: rgba(16, 185, 129, 0.2); color: #34d399;' : 'background: rgba(245, 158, 11, 0.2); color: #f59e0b;'}">${escapeHtml(t.status.toUpperCase())}</span>
                 </div>
-              ` : '<div style="font-size: 0.72rem; color: var(--text-sub); font-style: italic;">Awaiting admin review...</div>'}
-            </div>
-          `).join('');
+                <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 6px;">${safeMessage}</div>
+                ${safeResponse ? `
+                  <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent-blue); padding: 8px 12px; border-radius: 4px; font-size: 0.78rem;">
+                    <strong style="color: var(--accent-blue);">Admin Response:</strong> ${safeResponse}
+                  </div>
+                ` : '<div style="font-size: 0.72rem; color: var(--text-sub); font-style: italic;">Awaiting admin review...</div>'}
+              </div>
+            `;
+          }).join('');
         } else {
           listEl.innerHTML = '<div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>';
         }
@@ -1650,29 +1647,36 @@
         tbody.innerHTML = `<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--text-sub);">No users found matching search query.</td></tr>`;
         return;
       }
-      tbody.innerHTML = users.map(u => `
-        <tr style="border-bottom: 1px solid var(--card-border);">
-          <td style="padding: 10px 8px; color: var(--text-sub);">#${u.id}</td>
-          <td style="padding: 10px 8px; font-weight: 700; color: #fff;">${u.username}</td>
-          <td style="padding: 10px 8px; color: var(--text-muted);">${u.email}</td>
-          <td style="padding: 10px 8px;">
-            <span class="${u.role === 'admin' ? 'badge-pro' : 'badge-free'}">${u.role.toUpperCase()}</span>
-          </td>
-          <td style="padding: 10px 8px; font-weight: 600; color: #818cf8;">${u.credits.toLocaleString()}</td>
-          <td style="padding: 10px 8px;">
-            <span style="color: ${u.status === 'banned' ? '#f87171' : '#34d399'}; font-weight: 600;">${u.status.toUpperCase()}</span>
-          </td>
-          <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
-            <button onclick="editUserCredits(${u.id}, ${u.credits})" class="pill-btn" style="color: var(--accent-blue);">+ Tokens</button>
-            ${u.role !== 'admin' ? `
-              <button onclick="toggleUserBan(${u.id}, '${u.status === 'banned' ? 'active' : 'banned'}')" class="pill-btn" style="color: ${u.status === 'banned' ? '#34d399' : '#f87171'};">
-                ${u.status === 'banned' ? 'Unban' : 'Suspend'}
-              </button>
-              <button onclick="deleteUserAccount(${u.id})" class="pill-btn" style="color: #ef4444;">Delete</button>
-            ` : '<span style="font-size: 0.72rem; color: var(--text-sub);">Protected</span>'}
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = users.map(u => {
+        const safeUser = escapeHtml(u.username);
+        const safeEmail = escapeHtml(u.email);
+        const safeRole = escapeHtml(u.role);
+        const safeStatus = escapeHtml(u.status);
+
+        return `
+          <tr style="border-bottom: 1px solid var(--card-border);">
+            <td style="padding: 10px 8px; color: var(--text-sub);">#${u.id}</td>
+            <td style="padding: 10px 8px; font-weight: 700; color: #fff;">${safeUser}</td>
+            <td style="padding: 10px 8px; color: var(--text-muted);">${safeEmail}</td>
+            <td style="padding: 10px 8px;">
+              <span class="${u.role === 'admin' ? 'badge-pro' : 'badge-free'}">${safeRole.toUpperCase()}</span>
+            </td>
+            <td style="padding: 10px 8px; font-weight: 600; color: #818cf8;">${(u.credits || 0).toLocaleString()}</td>
+            <td style="padding: 10px 8px;">
+              <span style="color: ${u.status === 'banned' ? '#f87171' : '#34d399'}; font-weight: 600;">${safeStatus.toUpperCase()}</span>
+            </td>
+            <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
+              <button onclick="editUserCredits(${u.id}, ${u.credits})" class="pill-btn" style="color: var(--accent-blue);">+ Tokens</button>
+              ${u.role !== 'admin' ? `
+                <button onclick="toggleUserBan(${u.id}, '${u.status === 'banned' ? 'active' : 'banned'}')" class="pill-btn" style="color: ${u.status === 'banned' ? '#34d399' : '#f87171'};">
+                  ${u.status === 'banned' ? 'Unban' : 'Suspend'}
+                </button>
+                <button onclick="deleteUserAccount(${u.id})" class="pill-btn" style="color: #ef4444;">Delete</button>
+              ` : '<span style="font-size: 0.72rem; color: var(--text-sub);">Protected</span>'}
+            </td>
+          </tr>
+        `;
+      }).join('');
     }
 
     function filterAdminUsers() {
@@ -1714,28 +1718,38 @@
           if (tData.tickets.length === 0) {
             tBody.innerHTML = `<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--text-sub);">No support tickets filed yet.</td></tr>`;
           } else {
-            tBody.innerHTML = tData.tickets.map(t => `
-              <tr style="border-bottom: 1px solid var(--card-border);">
-                <td style="padding: 10px 8px; color: var(--text-sub);">#${t.id}</td>
-                <td style="padding: 10px 8px; font-weight: 600;">${t.username}<br><span style="font-size: 0.72rem; color: var(--text-muted);">${t.email}</span></td>
-                <td style="padding: 10px 8px;"><span class="badge-free">${t.category}</span></td>
-                <td style="padding: 10px 8px; max-width: 280px;">
-                  <strong style="color: #fff;">${t.subject}</strong><br>
-                  <span style="font-size: 0.75rem; color: var(--text-muted);">${t.message}</span>
-                  ${t.admin_response ? `<div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;"><strong>Replied:</strong> ${t.admin_response}</div>` : ''}
-                </td>
-                <td style="padding: 10px 8px;">
-                  <span style="font-size: 0.72rem; font-weight: 700; ${t.status === 'resolved' ? 'color: #34d399;' : 'color: #f59e0b;'}">${t.status.toUpperCase()}</span>
-                </td>
-                <td style="padding: 10px 8px; font-size: 0.72rem; color: var(--text-sub);">${(t.created_at || '').substring(0, 10)}</td>
-                <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
-                  <button onclick="replySupportTicket(${t.id})" class="pill-btn" style="color: var(--accent-blue);">💬 Reply</button>
-                  ${t.status !== 'resolved' ? `
-                    <button onclick="resolveSupportTicketDirect(${t.id})" class="pill-btn" style="color: #34d399; border-color: rgba(16, 185, 129, 0.4);">✓ Resolve</button>
-                  ` : ''}
-                </td>
-              </tr>
-            `).join('');
+            tBody.innerHTML = tData.tickets.map(t => {
+              const safeUser = escapeHtml(t.username);
+              const safeEmail = escapeHtml(t.email);
+              const safeCategory = escapeHtml(t.category);
+              const safeSubject = escapeHtml(t.subject);
+              const safeMessage = escapeHtml(t.message);
+              const safeResponse = escapeHtml(t.admin_response);
+              const isResolved = t.status === 'resolved';
+
+              return `
+                <tr style="border-bottom: 1px solid var(--card-border);">
+                  <td style="padding: 10px 8px; color: var(--text-sub);">#${t.id}</td>
+                  <td style="padding: 10px 8px; font-weight: 600;">${safeUser}<br><span style="font-size: 0.72rem; color: var(--text-muted);">${safeEmail}</span></td>
+                  <td style="padding: 10px 8px;"><span class="badge-free">${safeCategory}</span></td>
+                  <td style="padding: 10px 8px; max-width: 280px;">
+                    <strong style="color: #fff;">${safeSubject}</strong><br>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">${safeMessage}</span>
+                    ${safeResponse ? `<div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;"><strong>Replied:</strong> ${safeResponse}</div>` : ''}
+                  </td>
+                  <td style="padding: 10px 8px;">
+                    <span style="font-size: 0.72rem; font-weight: 700; ${isResolved ? 'color: #34d399;' : 'color: #f59e0b;'}">${escapeHtml(t.status.toUpperCase())}</span>
+                  </td>
+                  <td style="padding: 10px 8px; font-size: 0.72rem; color: var(--text-sub);">${escapeHtml((t.created_at || '').substring(0, 10))}</td>
+                  <td style="padding: 10px 8px; display: flex; gap: 6px; align-items: center;">
+                    <button onclick="replySupportTicket(${t.id})" class="pill-btn" style="color: var(--accent-blue);">💬 Reply</button>
+                    ${!isResolved ? `
+                      <button onclick="resolveSupportTicketDirect(${t.id})" class="pill-btn" style="color: #34d399; border-color: rgba(16, 185, 129, 0.4);">✓ Resolve</button>
+                    ` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('');
           }
         }
       } catch (err) {
