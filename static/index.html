@@ -344,7 +344,9 @@
       <form id="form-signup" onsubmit="handleSignup(event)" class="hidden" style="display: flex; flex-direction: column; gap: 14px;">
         <div>
           <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Choose Username</label>
-          <input type="text" id="signup-user" required minlength="3" class="voice-search" placeholder="e.g. audioartist" style="padding: 12px;">
+          <input type="text" id="signup-user" required minlength="3" class="voice-search" placeholder="e.g. audioartist" oninput="debounceCheckUsername()" style="padding: 12px; margin-bottom: 4px;">
+          <div id="username-feedback" style="font-size: 0.75rem; min-height: 16px;"></div>
+          <div id="username-suggestions" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;"></div>
         </div>
 
         <div>
@@ -360,8 +362,26 @@
         <button type="submit" id="btn-signup-submit" class="btn-primary" style="margin-top: 4px; padding: 12px;">
           <span>Create Free Account</span>
         </button>
-        <div style="text-align: center; font-size: 0.72rem; color: var(--text-sub);">Includes 5,000 complimentary credits</div>
+        <div style="text-align: center; font-size: 0.72rem; color: var(--text-sub);">Includes 2,000 complimentary credits</div>
       </form>
+
+      <!-- 2b. SIGNUP EMAIL VERIFICATION STEP -->
+      <div id="form-signup-verify" class="hidden" style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+          A 6-digit confirmation code was dispatched to <strong id="verify-display-email" style="color: #38bdf8;">your email</strong>. Enter it below to activate your account and claim your 2,000 credits:
+        </div>
+        <div>
+          <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Verification Code</label>
+          <input type="text" id="signup-verify-code" class="voice-search" placeholder="123456" maxlength="6" style="padding: 12px; letter-spacing: 4px; font-size: 1.1rem; text-align: center;">
+        </div>
+        <button type="button" onclick="submitSignupVerification()" id="btn-verify-submit" class="btn-primary" style="padding: 12px;">
+          <span>Verify & Enter Studio</span>
+        </button>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; margin-top: 6px;">
+          <a href="javascript:void(0)" onclick="resendSignupVerification()" style="color: var(--accent-blue); text-decoration: none;">Resend Code</a>
+          <a href="javascript:void(0)" onclick="setAuthTab('signup')" style="color: var(--text-muted); text-decoration: none;">← Change Email</a>
+        </div>
+      </div>
 
       <!-- 3. FORGOT PASSWORD FLOW -->
       <div id="form-forgot" class="hidden" style="display: flex; flex-direction: column; gap: 14px;">
@@ -408,6 +428,7 @@
       <button class="tab-btn" onclick="switchTab('voices')">📚 Voice Catalog (USA & UK)</button>
       <button class="tab-btn" onclick="switchTab('guide')">📖 User & Audio Guide</button>
       <button class="tab-btn" onclick="switchTab('help')">🆘 Help & Support Center</button>
+      <button class="tab-btn" onclick="switchTab('profile')">👤 My Account</button>
       <button class="tab-btn hidden" id="tab-btn-admin" onclick="switchTab('admin')">👑 Admin Control Panel</button>
     </div>
 
@@ -699,7 +720,7 @@
         <div class="faq-item">
           <div class="faq-title">🪙 How do Tokens work?</div>
           <div class="faq-text">
-            Every new account starts with <strong>5,000 free tokens</strong>. Each synthesized character costs 1 token. You can see your live balance in the top navigation bar at all times.
+            Every new account starts with <strong>2,000 free tokens</strong> upon email confirmation. Each synthesized character costs 1 token. You can see your live balance in the top navigation bar at all times.
           </div>
         </div>
 
@@ -761,6 +782,43 @@
           <div style="font-size: 0.9rem; font-weight: 700; color: #fff; margin-bottom: 10px;">My Submitted Complaints & Tickets</div>
           <div id="user-tickets-list" style="display: flex; flex-direction: column; gap: 10px; font-size: 0.82rem;">
             <div style="color: var(--text-sub); font-style: italic;">No open complaints found.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 7: User Profile & Account Settings -->
+    <div id="tab-profile" class="card hidden">
+      <div class="card-title">
+        <span>👤 Account Profile & Settings</span>
+      </div>
+      <div style="max-width: 600px; display: flex; flex-direction: column; gap: 18px; margin-top: 10px;">
+        <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px;">
+          <h4 style="color: #fff; margin-bottom: 12px;">Edit Profile Information</h4>
+
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+              <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Username</label>
+              <input type="text" id="profile-username" class="voice-search" style="padding: 10px; width: 100%;">
+              <div id="profile-user-feedback" style="font-size: 0.75rem; margin-top: 4px;"></div>
+            </div>
+
+            <div>
+              <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600;">Email Address</label>
+              <input type="email" id="profile-email" class="voice-search" style="padding: 10px; width: 100%;">
+              <div style="font-size: 0.72rem; color: var(--text-sub); margin-top: 4px;">Updating email requires entering a verification code sent to the new address.</div>
+            </div>
+
+            <div id="profile-email-verify-box" class="hidden" style="background: #111827; padding: 12px; border-radius: 6px; border: 1px dashed var(--accent-blue);">
+              <label style="font-size: 0.82rem; color: #38bdf8; display: block; margin-bottom: 4px;">Verification Code (sent to new email):</label>
+              <input type="text" id="profile-verify-code" class="voice-search" placeholder="6-digit code" maxlength="6" style="padding: 8px; width: 100%;">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px;">
+              <button type="button" onclick="handleSaveProfile()" id="btn-save-profile" class="btn-primary" style="padding: 10px 20px;">
+                <span>💾 Save Changes</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -884,7 +942,7 @@
     // Tab Switching
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices, #tab-guide, #tab-help, #tab-admin').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('#tab-tts, #tab-dialogue, #tab-clone, #tab-voices, #tab-guide, #tab-help, #tab-profile, #tab-admin').forEach(el => el.classList.add('hidden'));
 
       const map = {
         tts: 'tab-tts',
@@ -893,13 +951,16 @@
         voices: 'tab-voices',
         guide: 'tab-guide',
         help: 'tab-help',
+        profile: 'tab-profile',
         admin: 'tab-admin'
       };
 
       const target = document.getElementById(map[tabId]);
       if (target) {
         target.classList.remove('hidden');
-        event.currentTarget.classList.add('active');
+        if (event && event.currentTarget && event.currentTarget.classList) {
+          event.currentTarget.classList.add('active');
+        }
         if (tabId === 'dialogue') renderDialogueEditor();
         if (tabId === 'clone') fetchClonedVoices();
         if (tabId === 'voices') renderLibrary();
@@ -979,6 +1040,7 @@
 
       formLogin.classList.add('hidden');
       formSignup.classList.add('hidden');
+      document.getElementById('form-signup-verify').classList.add('hidden');
       formForgot.classList.add('hidden');
 
       if (tab === 'login') {
@@ -995,6 +1057,9 @@
         tabLogin.style.background = 'transparent';
         tabLogin.style.color = 'var(--text-muted)';
         formSignup.classList.remove('hidden');
+      } else if (tab === 'signup-verify') {
+        authTabBar.classList.add('hidden');
+        document.getElementById('form-signup-verify').classList.remove('hidden');
       } else if (tab === 'forgot') {
         authTabBar.classList.add('hidden');
         formForgot.classList.remove('hidden');
@@ -1017,8 +1082,14 @@
           const roleBadge = document.getElementById('header-role-badge');
           roleBadge.textContent = user.role.toUpperCase();
 
-          const userTokens = user.credits !== undefined ? user.credits : 5000;
+          const userTokens = user.credits !== undefined ? user.credits : 2000;
           document.getElementById('header-user-tokens').textContent = userTokens.toLocaleString();
+
+          // Populate profile tab
+          if (document.getElementById('profile-username')) {
+            document.getElementById('profile-username').value = user.username || '';
+            document.getElementById('profile-email').value = user.email || '';
+          }
 
           if (user.role === 'admin') {
             roleBadge.style.background = 'rgba(245, 158, 11, 0.2)';
@@ -1068,6 +1139,50 @@
       }
     }
 
+    let pendingVerificationEmail = '';
+    let checkUserTimer = null;
+
+    function debounceCheckUsername() {
+      clearTimeout(checkUserTimer);
+      checkUserTimer = setTimeout(async () => {
+        const u = document.getElementById('signup-user').value.trim();
+        const fb = document.getElementById('username-feedback');
+        const sugBox = document.getElementById('username-suggestions');
+        if (u.length < 3) {
+          fb.textContent = '';
+          sugBox.innerHTML = '';
+          return;
+        }
+        try {
+          const res = await fetch('/api/auth/check-username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: u })
+          });
+          const data = await res.json();
+          if (data.available) {
+            fb.style.color = '#34d399';
+            fb.textContent = '✓ ' + data.message;
+            sugBox.innerHTML = '';
+          } else {
+            fb.style.color = '#f87171';
+            fb.textContent = '✕ ' + data.message;
+            if (data.suggestions && data.suggestions.length > 0) {
+              sugBox.innerHTML = '<span style="font-size: 0.72rem; color: var(--text-sub);">Try: </span>' +
+                data.suggestions.map(s => `<button type="button" class="pill-btn" onclick="useSuggestedUsername('${escapeHtml(s)}')">${escapeHtml(s)}</button>`).join(' ');
+            } else {
+              sugBox.innerHTML = '';
+            }
+          }
+        } catch (e) {}
+      }, 350);
+    }
+
+    function useSuggestedUsername(name) {
+      document.getElementById('signup-user').value = name;
+      debounceCheckUsername();
+    }
+
     async function handleSignup(e) {
       e.preventDefault();
       const user = document.getElementById('signup-user').value.trim();
@@ -1079,23 +1194,124 @@
       btn.innerHTML = `<span>⏳ Registering Account...</span>`;
 
       try {
-        const res = await apiFetch('/api/auth/signup', {
+        const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: user, email: email, password: pass })
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          showToast(`Welcome to the studio, ${data.user.username}!`);
-          await checkAuth();
+          pendingVerificationEmail = email;
+          document.getElementById('verify-display-email').textContent = email;
+          setAuthTab('signup-verify');
+          showToast(data.message || 'Verification code dispatched to your email.');
         } else {
-          showToast(data.detail || data.message || 'Registration failed', true);
+          let errDetail = data.detail;
+          if (typeof errDetail === 'object' && errDetail !== null) {
+            showToast(errDetail.message || 'Registration failed', true);
+            if (errDetail.suggestions && errDetail.suggestions.length > 0) {
+              const sugBox = document.getElementById('username-suggestions');
+              sugBox.innerHTML = '<span style="font-size: 0.72rem; color: var(--text-sub);">Try: </span>' +
+                errDetail.suggestions.map(s => `<button type="button" class="pill-btn" onclick="useSuggestedUsername('${escapeHtml(s)}')">${escapeHtml(s)}</button>`).join(' ');
+            }
+          } else {
+            showToast(errDetail || data.message || 'Registration failed', true);
+          }
         }
       } catch (err) {
         showToast('Signup error: ' + err.message, true);
       } finally {
         btn.disabled = false;
         btn.innerHTML = `<span>Create Free Account</span>`;
+      }
+    }
+
+    async function submitSignupVerification() {
+      const code = document.getElementById('signup-verify-code').value.trim();
+      if (!code) return showToast('Please enter the 6-digit verification code', true);
+
+      const btn = document.getElementById('btn-verify-submit');
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Verifying...</span>';
+
+      try {
+        const res = await fetch('/api/auth/verify-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: pendingVerificationEmail, code: code })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(data.message || 'Email verified! Welcome.');
+          await checkAuth();
+        } else {
+          showToast(data.detail || 'Verification failed', true);
+        }
+      } catch (err) {
+        showToast('Verification error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Verify & Enter Studio</span>';
+      }
+    }
+
+    async function resendSignupVerification() {
+      if (!pendingVerificationEmail) return showToast('No email found to resend to', true);
+      try {
+        const res = await fetch('/api/auth/resend-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: pendingVerificationEmail })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Verification code resent!');
+      } catch (e) {
+        showToast('Failed to resend code: ' + e.message, true);
+      }
+    }
+
+    async function handleSaveProfile() {
+      const u = document.getElementById('profile-username').value.trim();
+      const e = document.getElementById('profile-email').value.trim();
+      const vCode = document.getElementById('profile-verify-code').value.trim();
+      const btn = document.getElementById('btn-save-profile');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Saving...</span>';
+
+      try {
+        const payload = { username: u, email: e };
+        if (vCode) payload.verification_code = vCode;
+
+        const res = await apiFetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (data.requires_verification) {
+            document.getElementById('profile-email-verify-box').classList.remove('hidden');
+            showToast(data.message || 'Verification code sent to new email.');
+          } else {
+            document.getElementById('profile-email-verify-box').classList.add('hidden');
+            document.getElementById('profile-verify-code').value = '';
+            showToast(data.message || 'Profile saved!');
+            await checkAuth();
+          }
+        } else {
+          let errDetail = data.detail;
+          if (typeof errDetail === 'object' && errDetail !== null) {
+            showToast(errDetail.message || 'Update failed', true);
+          } else {
+            showToast(errDetail || data.message || 'Failed to update profile', true);
+          }
+        }
+      } catch (err) {
+        showToast('Profile save error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>💾 Save Changes</span>';
       }
     }
 

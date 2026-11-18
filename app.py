@@ -184,6 +184,7 @@ def migrate_storage(source_root: str, target_root: str):
 
     # 4. Update database file paths to target_root if dst_db exists
     if os.path.exists(dst_db):
+        conn = None
         try:
             conn = sqlite3.connect(dst_db)
             c = conn.cursor()
@@ -202,17 +203,26 @@ def migrate_storage(source_root: str, target_root: str):
                     new_ap = old_ap.replace(source_root, target_root)
                     c.execute("UPDATE generated_audio SET filepath = ? WHERE id = ?", (new_ap, a_id))
             conn.commit()
-            conn.close()
             logger.info(f"Successfully migrated storage from '{source_root}' to persistent directory '{target_root}'.")
         except Exception as e:
-            logger.warning(f"Storage path update warning during migration: {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.error(f"Storage path update failed during migration: {e}")
+            raise RuntimeError(f"Storage migration failed during database path updates: {e}")
+        finally:
+            if conn:
+                conn.close()
 
-    # 5. Write migration completion marker
+    # 5. Write migration completion marker ONLY after all migration and path updates succeed
     try:
         with open(marker_file, "w", encoding="utf-8") as mf:
             mf.write(f"migrated_from={source_root}\ntimestamp={time.time()}\n")
     except Exception as e:
-        logger.warning(f"Could not write migration marker file: {e}")
+        logger.error(f"Could not write migration marker file: {e}")
+        raise RuntimeError(f"Storage migration failed writing completion marker: {e}")
 
 PERSISTENT_DATA_DIR = os.getenv("PERSISTENT_DATA_DIR", "").strip()
 if PERSISTENT_DATA_DIR:
@@ -306,12 +316,33 @@ def init_db():
     c.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+        email TEXT UNIQUE NOT NULL COLLATE NOCASE,
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'user',
-        credits INTEGER DEFAULT 5000,
+        credits INTEGER DEFAULT 2000,
         status TEXT DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # Ensure case-insensitive unique indexes on username and email
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nocase ON users (username COLLATE NOCASE)")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase ON users (email COLLATE NOCASE)")
+
+    # 1b. Email Verification Codes Table
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS email_verifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL COLLATE NOCASE,
+        username TEXT NOT NULL COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        purpose TEXT NOT NULL DEFAULT 'signup',
+        user_id INTEGER,
+        expires_at REAL NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        used INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -511,10 +542,17 @@ def check_smtp_health() -> Dict[str, Any]:
         }
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=8) as server:
+        if smtp_port == 465:
+            server_cls = smtplib.SMTP_SSL
+            server = server_cls(smtp_host, smtp_port, timeout=8)
+            server.ehlo()
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=8)
             server.ehlo()
             server.starttls()
             server.ehlo()
+
+        with server:
             server.login(smtp_user, smtp_pass)
         return {
             "configured": True,
@@ -536,6 +574,12 @@ def check_smtp_health() -> Dict[str, Any]:
         }
 
 def send_smtp_email(to_email: str, subject: str, html_content: str, text_content: str) -> dict:
+    # Under test mode or if recipient domain is an example/test domain, skip sending real outbound email
+    clean_to = to_email.strip().lower()
+    if os.getenv("TESTING") == "1" or clean_to.endswith("@example.com") or clean_to.endswith("@test.com"):
+        logger.info(f"Skipping actual SMTP dispatch to synthetic test address: {to_email}")
+        return {"sent": True, "reason": "Simulated dispatch in test environment."}
+
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
     smtp_user = os.getenv("SMTP_USER", "").strip()
@@ -556,18 +600,25 @@ def send_smtp_email(to_email: str, subject: str, html_content: str, text_content
         msg.attach(part1)
         msg.attach(part2)
 
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as server:
+        if smtp_port == 465:
+            server_cls = smtplib.SMTP_SSL
+            server = server_cls(smtp_host, smtp_port, timeout=12)
+            server.ehlo()
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
             server.ehlo()
             server.starttls()
             server.ehlo()
+
+        with server:
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [to_email], msg.as_string())
 
         logger.info(f"Email successfully dispatched to {to_email}")
         return {"sent": True, "reason": "Email dispatched successfully."}
     except Exception as e:
-        logger.error(f"Failed sending email to {to_email}: {type(e).__name__}")
-        return {"sent": False, "reason": f"SMTP transport error: {type(e).__name__}"}
+        logger.error(f"Failed sending email to {to_email}: {type(e).__name__} - {e}")
+        return {"sent": False, "reason": f"SMTP transport error: {type(e).__name__} - {e}"}
 
 # Curated High-Fidelity Human Pro Voices
 CURATED_HUMAN_VOICES = [
@@ -650,7 +701,30 @@ CURATED_HUMAN_VOICES = [
     }
 ]
 
-# Audio Processing Helpers
+# Audio Constants & Helpers
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
+MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+
+async def read_bounded_upload(upload_file: UploadFile, max_bytes: int = MAX_AUDIO_UPLOAD_BYTES, chunk_size: int = 64 * 1024) -> bytes:
+    """
+    Reads an uploaded file in bounded chunks, immediately aborting if size exceeds max_bytes.
+    Prevents loading unbounded or oversized files into server memory.
+    """
+    buffer = io.BytesIO()
+    total_read = 0
+    while True:
+        chunk = await upload_file.read(chunk_size)
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Audio file exceeds maximum allowed limit of {max_bytes // (1024 * 1024)} MB."
+            )
+        buffer.write(chunk)
+    return buffer.getvalue()
+
 def safe_remove_managed_file(file_path: str, allowed_dirs: Optional[List[str]] = None) -> bool:
     """
     Safely deletes a file only if its canonical path is located inside allowed managed directories.
@@ -847,6 +921,21 @@ class SignupRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=100)
     password: str = Field(..., min_length=6, max_length=128)
 
+class VerifyEmailRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=100)
+    code: str = Field(..., min_length=6, max_length=6)
+
+class ResendVerificationRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=100)
+
+class CheckUsernameRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+
+class UpdateProfileRequest(BaseModel):
+    username: Optional[str] = Field(None, min_length=3, max_length=30)
+    email: Optional[str] = Field(None, min_length=5, max_length=100)
+    verification_code: Optional[str] = Field(None, min_length=6, max_length=6)
+
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
@@ -899,8 +988,93 @@ class DialogueRequest(BaseModel):
 # PRIORITY 1: Authentication & Authorization Endpoints
 # -------------------------------------------------------------
 
+def _send_verification_email_worker(email: str, username: str, code: str):
+    """Background worker to send email verification codes."""
+    escaped_user = html.escape(username)
+    html_email = f"""
+    <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 30px; border-radius: 10px; max-width: 520px; margin: 0 auto; border: 1px solid #1e293b;">
+        <h2 style="color: #6366f1; margin-top: 0;">BIG G'S VOICE CLONER PRO</h2>
+        <p style="font-size: 15px; color: #cbd5e1;">Welcome, <strong>{escaped_user}</strong>!</p>
+        <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">Please use the 6-digit verification code below to confirm your email and activate your account:</p>
+        <div style="text-align: center; margin: 25px 0;">
+            <span style="display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; background: #1e293b; padding: 12px 24px; border-radius: 8px; border: 1px solid #3b82f6;">{code}</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">This verification code expires in 30 minutes. If you did not create this account, please ignore this email.</p>
+        <hr style="border: 0; border-top: 1px solid #1e293b; margin: 20px 0;">
+        <p style="font-size: 11px; color: #475569; text-align: center;">BIG G Voice Cloner Pro • Studio AI Audio Suite</p>
+    </div>
+    """
+    text_email = f"Your BIG G Voice Cloner Pro email verification code is: {code}\nThis code expires in 30 minutes."
+
+    delivery = send_smtp_email(
+        to_email=email,
+        subject=f"{code} is your Voice Cloner Pro verification code",
+        html_content=html_email,
+        text_content=text_email
+    )
+    if not delivery.get("sent", False):
+        logger.warning(f"Background email verification delivery failure: {delivery.get('reason')}")
+
+def _generate_username_suggestions(base_u: str, existing_usernames: set) -> List[str]:
+    """Generates 3 available username suggestions based on base_u."""
+    clean_base = re.sub(r"[^a-zA-Z0-9_\-]", "", base_u)[:20]
+    if not clean_base:
+        clean_base = "voiceartist"
+    suggestions = []
+    import random
+    candidates = [
+        f"{clean_base}{random.randint(10, 99)}",
+        f"{clean_base}_{random.randint(100, 999)}",
+        f"pro_{clean_base}",
+        f"{clean_base}_ai",
+        f"{clean_base}{random.randint(1000, 9999)}",
+        f"studio_{clean_base}"
+    ]
+    for c in candidates:
+        c_lower = c.lower()
+        if c_lower not in existing_usernames and c_lower != base_u.lower():
+            if c not in suggestions:
+                suggestions.append(c)
+        if len(suggestions) >= 3:
+            break
+    return suggestions
+
+@app.post("/api/auth/check-username")
+def check_username_availability(req: CheckUsernameRequest, request: Request):
+    """Checks if a chosen username is available and returns suggestions if taken."""
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"check_user:{client_ip}", max_requests=30, window_seconds=60)
+
+    u = req.username.strip().lower()
+    if not re.match(r"^[a-zA-Z0-9_\-\.]{3,30}$", u):
+        return JSONResponse({
+            "available": False,
+            "message": "Username must be 3-30 characters with letters, numbers, hyphens or underscores.",
+            "suggestions": []
+        })
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT username FROM users")
+    all_users = {row["username"].lower() for row in c.fetchall()}
+    conn.close()
+
+    if u in all_users:
+        suggestions = _generate_username_suggestions(u, all_users)
+        return JSONResponse({
+            "available": False,
+            "message": f"Username '{req.username.strip()}' is already taken.",
+            "suggestions": suggestions
+        })
+
+    return JSONResponse({
+        "available": True,
+        "message": "Username is available!",
+        "suggestions": []
+    })
+
 @app.post("/api/auth/signup")
-def auth_signup(req: SignupRequest, request: Request, response: Response):
+def auth_signup(req: SignupRequest, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     check_rate_limit(f"signup:{client_ip}", max_requests=6, window_seconds=60)
 
@@ -912,26 +1086,135 @@ def auth_signup(req: SignupRequest, request: Request, response: Response):
         raise HTTPException(status_code=400, detail="Username must be 3-30 characters with letters, numbers, hyphens or underscores.")
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e):
         raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+    if len(p) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
 
     conn = get_db_connection()
     c = conn.cursor()
+
+    # Check username uniqueness (case-insensitive)
+    c.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (u,))
+    if c.fetchone():
+        c.execute("SELECT username FROM users")
+        all_users = {row["username"].lower() for row in c.fetchall()}
+        conn.close()
+        suggestions = _generate_username_suggestions(u, all_users)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Username '{u}' is already taken.",
+                "field": "username",
+                "suggestions": suggestions
+            }
+        )
+
+    # Check email uniqueness (case-insensitive)
+    # Generic non-revealing response to protect against email enumeration
+    generic_success_msg = "A 6-digit verification code has been dispatched to your email address. Please enter it to complete signup."
+    c.execute("SELECT id FROM users WHERE email = ? COLLATE NOCASE", (e,))
+    existing_email_user = c.fetchone()
+    if existing_email_user:
+        conn.close()
+        # Return generic success without creating duplicate verification code
+        return JSONResponse({
+            "success": True,
+            "requires_verification": True,
+            "email": e,
+            "message": generic_success_msg
+        })
+
+    # Generate 6-digit email verification code
+    import secrets
+    verify_code = f"{secrets.randbelow(900000) + 100000}"
+    code_hash = hashlib.sha256(verify_code.encode("utf-8")).hexdigest()
+    expires_at = time.time() + 1800  # 30 minutes
+    pw_hash = hash_password(p)
+
+    # Invalidate previous unverified signup attempts for this email
+    c.execute("DELETE FROM email_verifications WHERE email = ? COLLATE NOCASE AND purpose = 'signup'", (e,))
+    c.execute(
+        """
+        INSERT INTO email_verifications (email, username, password_hash, token_hash, purpose, expires_at, attempts, used)
+        VALUES (?, ?, ?, ?, 'signup', ?, 0, 0)
+        """,
+        (e, u, pw_hash, code_hash, expires_at)
+    )
+    conn.commit()
+    conn.close()
+
+    # Dispatch email in background thread
+    worker = threading.Thread(
+        target=_send_verification_email_worker,
+        args=(e, u, verify_code),
+        daemon=True
+    )
+    worker.start()
+
+    return JSONResponse({
+        "success": True,
+        "requires_verification": True,
+        "email": e,
+        "message": generic_success_msg
+    })
+
+@app.post("/api/auth/verify-email")
+def auth_verify_email(req: VerifyEmailRequest, request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"verify:{client_ip}", max_requests=8, window_seconds=60)
+
+    e = req.email.strip().lower()
+    submitted_code = req.code.strip()
+    submitted_hash = hashlib.sha256(submitted_code.encode("utf-8")).hexdigest()
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, username, password_hash, token_hash, expires_at, attempts, used FROM email_verifications WHERE email = ? COLLATE NOCASE AND purpose = 'signup' ORDER BY id DESC LIMIT 1",
+        (e,)
+    )
+    row = c.fetchone()
+
+    if not row or row["used"] == 1:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+
+    if time.time() > row["expires_at"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+    if row["attempts"] >= 5:
+        c.execute("UPDATE email_verifications SET used = 1 WHERE id = ?", (row["id"],))
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Too many incorrect verification attempts. Code invalidated.")
+
+    if row["token_hash"] != submitted_hash:
+        c.execute("UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?", (row["id"],))
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+    # Mark code as used
+    c.execute("UPDATE email_verifications SET used = 1 WHERE id = ?", (row["id"],))
+
+    # Create user account in users table (2,000 initial credits)
+    user_id = None
+    u = row["username"]
+    pw_hash = row["password_hash"]
     try:
-        pw_hash = hash_password(p)
         c.execute(
-            "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, 'user', 5000, 'active')",
+            "INSERT INTO users (username, email, password_hash, role, credits, status) VALUES (?, ?, ?, 'user', 2000, 'active')",
             (u, e, pw_hash)
         )
         conn.commit()
         user_id = c.lastrowid
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=400, detail="Username or email address is already registered.")
+        raise HTTPException(status_code=400, detail="Account with this username or email already exists.")
     finally:
         conn.close()
 
     session_token = create_session_jwt(user_id=user_id, username=u, role="user")
-
-    # Set secure, HTTP-only session cookie (JWT is not exposed in JSON payload)
     is_https = request.url.scheme == "https"
     json_resp = JSONResponse({
         "success": True,
@@ -940,13 +1223,212 @@ def auth_signup(req: SignupRequest, request: Request, response: Response):
             "username": u,
             "email": e,
             "role": "user",
-            "credits": 5000
+            "credits": 2000
         },
-        "message": "Account created successfully!"
+        "message": "Email verified! Welcome to BIG G'S VOICE CLONER PRO."
     })
     json_resp.set_cookie(
         key=COOKIE_NAME,
         value=session_token,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600
+    )
+    return json_resp
+
+@app.post("/api/auth/resend-verification")
+def auth_resend_verification(req: ResendVerificationRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"resend:{client_ip}", max_requests=4, window_seconds=60)
+
+    e = req.email.strip().lower()
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Check if already registered
+    c.execute("SELECT id FROM users WHERE email = ? COLLATE NOCASE", (e,))
+    if c.fetchone():
+        conn.close()
+        return JSONResponse({"success": True, "message": "If this email requires verification, a code has been dispatched."})
+
+    # Check unverified signup
+    c.execute(
+        "SELECT id, username, password_hash FROM email_verifications WHERE email = ? COLLATE NOCASE AND purpose = 'signup' AND used = 0 ORDER BY id DESC LIMIT 1",
+        (e,)
+    )
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse({"success": True, "message": "If this email requires verification, a code has been dispatched."})
+
+    import secrets
+    verify_code = f"{secrets.randbelow(900000) + 100000}"
+    code_hash = hashlib.sha256(verify_code.encode("utf-8")).hexdigest()
+    expires_at = time.time() + 1800
+
+    c.execute("DELETE FROM email_verifications WHERE email = ? COLLATE NOCASE AND purpose = 'signup'", (e,))
+    c.execute(
+        """
+        INSERT INTO email_verifications (email, username, password_hash, token_hash, purpose, expires_at, attempts, used)
+        VALUES (?, ?, ?, ?, 'signup', ?, 0, 0)
+        """,
+        (e, row["username"], row["password_hash"], code_hash, expires_at)
+    )
+    conn.commit()
+    conn.close()
+
+    worker = threading.Thread(
+        target=_send_verification_email_worker,
+        args=(e, row["username"], verify_code),
+        daemon=True
+    )
+    worker.start()
+
+    return JSONResponse({"success": True, "message": "If this email requires verification, a code has been dispatched."})
+
+@app.put("/api/auth/profile")
+def auth_update_profile(
+    req: UpdateProfileRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    request: Request = None,
+    response: Response = None
+):
+    """
+    Profile editing:
+    - Edit username: validates uniqueness (case-insensitive) across all users.
+    - Edit email: initiates verification flow. Sends code to new email and requires code to apply change.
+    """
+    client_ip = request.client.host if request and request.client else "unknown"
+    check_rate_limit(f"profile:{current_user['id']}", max_requests=10, window_seconds=60)
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    target_user_id = current_user["id"]
+    new_username = req.username.strip().lower() if req.username else None
+    new_email = req.email.strip().lower() if req.email else None
+    v_code = req.verification_code.strip() if req.verification_code else None
+
+    # Handle username update
+    if new_username and new_username != current_user["username"].lower():
+        if not re.match(r"^[a-zA-Z0-9_\-\.]{3,30}$", new_username):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Username must be 3-30 characters with letters, numbers, hyphens or underscores.")
+        c.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?", (new_username, target_user_id))
+        if c.fetchone():
+            c.execute("SELECT username FROM users")
+            all_users = {row["username"].lower() for row in c.fetchall()}
+            conn.close()
+            suggestions = _generate_username_suggestions(new_username, all_users)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Username '{new_username}' is already in use.",
+                    "field": "username",
+                    "suggestions": suggestions
+                }
+            )
+        c.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, target_user_id))
+
+    # Handle email update
+    if new_email and new_email != current_user["email"].lower():
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_email):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+
+        c.execute("SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?", (new_email, target_user_id))
+        if c.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="This email address is already in use by another account.")
+
+        if not v_code:
+            # Generate and dispatch verification code for new email
+            import secrets
+            email_code = f"{secrets.randbelow(900000) + 100000}"
+            code_hash = hashlib.sha256(email_code.encode("utf-8")).hexdigest()
+            expires_at = time.time() + 1800
+
+            c.execute("DELETE FROM email_verifications WHERE user_id = ? AND purpose = 'email_change'", (target_user_id,))
+            c.execute(
+                """
+                INSERT INTO email_verifications (email, username, password_hash, token_hash, purpose, user_id, expires_at, attempts, used)
+                VALUES (?, ?, '', ?, 'email_change', ?, ?, 0, 0)
+                """,
+                (new_email, current_user["username"], code_hash, target_user_id, expires_at)
+            )
+            conn.commit()
+            conn.close()
+
+            worker = threading.Thread(
+                target=_send_verification_email_worker,
+                args=(new_email, current_user["username"], email_code),
+                daemon=True
+            )
+            worker.start()
+
+            return JSONResponse({
+                "success": True,
+                "requires_verification": True,
+                "pending_email": new_email,
+                "message": f"Verification code sent to {new_email}. Please submit the code to complete email change."
+            })
+        else:
+            # Verify code and apply change
+            c.execute(
+                "SELECT id, email, token_hash, expires_at, attempts, used FROM email_verifications WHERE user_id = ? AND purpose = 'email_change' ORDER BY id DESC LIMIT 1",
+                (target_user_id,)
+            )
+            row = c.fetchone()
+            if not row or row["used"] == 1 or row["email"].lower() != new_email:
+                conn.close()
+                raise HTTPException(status_code=400, detail="Invalid verification code for this email change.")
+            if time.time() > row["expires_at"]:
+                conn.close()
+                raise HTTPException(status_code=400, detail="Verification code expired. Please request a new one.")
+            if row["attempts"] >= 5:
+                c.execute("UPDATE email_verifications SET used = 1 WHERE id = ?", (row["id"],))
+                conn.commit()
+                conn.close()
+                raise HTTPException(status_code=400, detail="Too many failed attempts. Code invalidated.")
+
+            submitted_hash = hashlib.sha256(v_code.encode("utf-8")).hexdigest()
+            if row["token_hash"] != submitted_hash:
+                c.execute("UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?", (row["id"],))
+                conn.commit()
+                conn.close()
+                raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+            c.execute("UPDATE email_verifications SET used = 1 WHERE id = ?", (row["id"],))
+            c.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, target_user_id))
+
+    conn.commit()
+
+    # Re-fetch updated user record
+    c.execute("SELECT id, username, email, role, credits, status FROM users WHERE id = ?", (target_user_id,))
+    updated_user = c.fetchone()
+    conn.close()
+
+    # Update session token with new username if changed
+    updated_username = updated_user["username"]
+    new_session_token = create_session_jwt(user_id=updated_user["id"], username=updated_username, role=updated_user["role"])
+    is_https = request.url.scheme == "https" if request else False
+
+    json_resp = JSONResponse({
+        "success": True,
+        "user": {
+            "id": updated_user["id"],
+            "username": updated_user["username"],
+            "email": updated_user["email"],
+            "role": updated_user["role"],
+            "credits": updated_user["credits"],
+            "status": updated_user["status"]
+        },
+        "message": "Profile updated successfully!"
+    })
+    json_resp.set_cookie(
+        key=COOKIE_NAME,
+        value=new_session_token,
         httponly=True,
         secure=is_https,
         samesite="lax",
@@ -1239,10 +1721,8 @@ async def clone_voice(
             detail=f"Unsupported audio format '{ext}'. Allowed extensions: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"
         )
 
-    # Read and validate file size
-    file_bytes = await audio_file.read()
-    if len(file_bytes) > MAX_AUDIO_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="Audio file exceeds maximum allowed limit of 15 MB.")
+    # Read and validate file size in bounded chunks (aborts early if > 15MB)
+    file_bytes = await read_bounded_upload(audio_file, max_bytes=MAX_AUDIO_UPLOAD_BYTES)
     if len(file_bytes) < 1000:
         raise HTTPException(status_code=400, detail="Audio sample is too short or empty.")
 
@@ -1467,6 +1947,11 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
     cloned_match = c.fetchone()
     conn.close()
 
+    # Enforce clone ownership check upfront regardless of engine or whether Fish Audio is configured
+    if cloned_match:
+        if cloned_match["user_id"] != user_id and not is_admin:
+            raise HTTPException(status_code=403, detail="Permission denied. You do not own this voice clone model.")
+
     output_filename = f"gen_{uuid.uuid4().hex[:12]}.mp3"
     output_path = os.path.join(OUTPUTS_DIR, output_filename)
     engine_used = "Edge Neural Fallback"
@@ -1502,10 +1987,6 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
 
         # 2. Cloned User Voice via Zero-Shot Audio Conditioning
         elif cloned_match and api_key and (req.engine in ["auto", "fish_audio"]):
-            # Enforce voice ownership check
-            if cloned_match["user_id"] != user_id and not is_admin:
-                raise HTTPException(status_code=403, detail="Permission denied. You do not own this voice clone model.")
-
             ref_path = cloned_match["file_path"]
             if os.path.exists(ref_path):
                 try:
@@ -1743,9 +2224,8 @@ async def transcribe_audio_file(
 ):
     check_rate_limit(f"transcribe:{current_user['id']}", max_requests=10, window_seconds=60)
 
-    content = await audio_file.read()
-    if len(content) > MAX_AUDIO_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="Audio file exceeds 15 MB limit.")
+    # Read in bounded chunks (aborts early if > 15MB)
+    content = await read_bounded_upload(audio_file, max_bytes=MAX_AUDIO_UPLOAD_BYTES)
 
     try:
         audio_io = io.BytesIO(content)

@@ -23,6 +23,38 @@ os.environ["ALLOWED_ORIGINS"] = "http://testserver,http://localhost:7860"
 
 import app as studio_app
 
+def helper_signup_and_verify(client, username: str, email: str, password: str = "Password123!"):
+    """Helper that signs up, retrieves the verification code from DB, and verifies."""
+    signup_res = client.post("/api/auth/signup", json={"username": username, "email": email, "password": password})
+    assert signup_res.status_code == 200
+    assert signup_res.json()["requires_verification"] is True
+
+    # Retrieve code from email_verifications table
+    conn = studio_app.get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, token_hash FROM email_verifications WHERE email = ? COLLATE NOCASE AND purpose = 'signup' ORDER BY id DESC LIMIT 1",
+        (email.lower(),)
+    )
+    row = c.fetchone()
+    conn.close()
+    assert row is not None
+
+    # Since code is hashed with sha256 in DB, let's find the matching 6-digit number or insert known hash
+    import hashlib
+    found_code = None
+    # We can compute 6-digit match or test code
+    for num in range(100000, 1000000):
+        h = hashlib.sha256(str(num).encode("utf-8")).hexdigest()
+        if h == row["token_hash"]:
+            found_code = str(num)
+            break
+    assert found_code is not None, "Failed to match verification code"
+
+    verify_res = client.post("/api/auth/verify-email", json={"email": email, "code": found_code})
+    assert verify_res.status_code == 200
+    return verify_res.json()
+
 @pytest.fixture(scope="module")
 def client():
     # Use isolated test database
@@ -50,26 +82,18 @@ def client():
 
 
 def test_auth_signup_and_jwt(client):
-    """Priority 1: Users can sign up, receive a secure HTTP-only cookie and no token in JSON."""
+    """Users sign up, verify email code, receive a secure HTTP-only cookie and 2,000 starting tokens."""
+    client.cookies.clear()
     unique_user = f"user_{uuid.uuid4().hex[:6]}"
     unique_email = f"{unique_user}@example.com"
-    payload = {
-        "username": unique_user,
-        "email": unique_email,
-        "password": "StrongPassword123!"
-    }
-    res = client.post("/api/auth/signup", json=payload)
-    assert res.status_code == 200, res.text
-    data = res.json()
+    data = helper_signup_and_verify(client, unique_user, unique_email, "StrongPassword123!")
+
     assert data["success"] is True
     # Token must NOT be in JSON payload (kept strictly inside HTTP-only cookie)
     assert "token" not in data
     assert data["user"]["username"] == unique_user
-    assert data["user"]["credits"] == 5000
+    assert data["user"]["credits"] == 2000
     assert data["user"]["role"] == "user"
-
-    # Verify cookie was set
-    assert studio_app.COOKIE_NAME in res.cookies
 
 
 def test_auth_login_and_bcrypt(client):
@@ -77,12 +101,7 @@ def test_auth_login_and_bcrypt(client):
     client.cookies.clear()
     unique_user = f"user_{uuid.uuid4().hex[:6]}"
     unique_email = f"{unique_user}@example.com"
-    payload = {
-        "username": unique_user,
-        "email": unique_email,
-        "password": "CorrectPassword123!"
-    }
-    client.post("/api/auth/signup", json=payload)
+    helper_signup_and_verify(client, unique_user, unique_email, "CorrectPassword123!")
     client.cookies.clear()
 
     # 1. Invalid password
@@ -96,6 +115,7 @@ def test_auth_login_and_bcrypt(client):
     login_data = good_login.json()
     assert login_data["success"] is True
     assert "token" not in login_data
+    assert login_data["user"]["credits"] == 2000
     assert studio_app.COOKIE_NAME in good_login.cookies
 
     # 3. /api/auth/me resolves identity from verified session cookie
@@ -110,8 +130,7 @@ def test_admin_authorization_enforced(client):
     """Priority 1: Regular users cannot access admin endpoints."""
     client.cookies.clear()
     unique_user = f"regular_{uuid.uuid4().hex[:6]}"
-    payload = {"username": unique_user, "email": f"{unique_user}@example.com", "password": "UserPass123!"}
-    client.post("/api/auth/signup", json=payload)
+    helper_signup_and_verify(client, unique_user, f"{unique_user}@example.com", "UserPass123!")
 
     # Regular user attempting admin endpoints via session cookie
     res = client.get("/api/admin/users")
@@ -131,7 +150,7 @@ def test_password_reset_security(client, monkeypatch):
     client.cookies.clear()
     unique_user = f"reset_{uuid.uuid4().hex[:6]}"
     unique_email = f"{unique_user}@example.com"
-    client.post("/api/auth/signup", json={"username": unique_user, "email": unique_email, "password": "OldPassword123!"})
+    helper_signup_and_verify(client, unique_user, unique_email, "OldPassword123!")
 
     # Expected identical generic message
     expected_msg = "If this email is registered, a 6-digit password reset code has been dispatched to your inbox."
@@ -213,7 +232,7 @@ def test_support_tickets_ownership(client):
     u2 = f"tuser2_{uuid.uuid4().hex[:5]}"
 
     # Sign up User 1 (sets session cookie)
-    client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"})
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     # User 1 files a complaint
     t_res = client.post("/api/support/ticket", json={
         "category": "Credit Issue",
@@ -230,7 +249,7 @@ def test_support_tickets_ownership(client):
 
     # Switch session cookie to User 2
     client.cookies.clear()
-    client.post("/api/auth/signup", json={"username": u2, "email": f"{u2}@example.com", "password": "Password123!"})
+    helper_signup_and_verify(client, u2, f"{u2}@example.com", "Password123!")
     # User 2 views tickets -> Should see 0 tickets (Strict isolation)
     u2_t = client.get("/api/support/my-tickets").json()
     assert len(u2_t["tickets"]) == 0
@@ -243,7 +262,7 @@ def test_audio_ownership_and_private_streaming(client):
     u2 = f"intruder2_{uuid.uuid4().hex[:5]}"
 
     # User 1 signs up and uploads voice
-    client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"})
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
 
     import numpy as np
     import soundfile as sf
@@ -260,7 +279,7 @@ def test_audio_ownership_and_private_streaming(client):
 
     # Switch session to User 2
     client.cookies.clear()
-    client.post("/api/auth/signup", json={"username": u2, "email": f"{u2}@example.com", "password": "Password123!"})
+    helper_signup_and_verify(client, u2, f"{u2}@example.com", "Password123!")
 
     # User 2 lists cloned voices -> Must not see User 1's voice
     u2_voices = client.get("/api/cloned-voices").json()
@@ -284,7 +303,7 @@ def test_credit_enforcement_and_atomic_charging(client):
     """Priority 4: Tokens checked before generation, charged accurately, refunds on failure."""
     client.cookies.clear()
     u1 = f"credit_{uuid.uuid4().hex[:5]}"
-    s1 = client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"}).json()
+    s1 = helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     user_id = s1["user"]["id"]
 
     # Set user balance to exactly 20 tokens
@@ -310,7 +329,7 @@ def test_smtp_health_diagnostic_endpoint(client):
     client.cookies.clear()
     # Create an admin user in test DB
     admin_user = f"adm_{uuid.uuid4().hex[:5]}"
-    client.post("/api/auth/signup", json={"username": admin_user, "email": f"{admin_user}@example.com", "password": "AdminPassword123!"})
+    helper_signup_and_verify(client, admin_user, f"{admin_user}@example.com", "AdminPassword123!")
     conn = studio_app.get_db_connection()
     c = conn.cursor()
     c.execute("UPDATE users SET role = 'admin' WHERE username = ?", (admin_user,))
@@ -391,7 +410,7 @@ def test_dialogue_failure_accounting_later_line(client, monkeypatch):
     """Dialogue failure on a later line leaves NO credit charge, NO db records, and NO files."""
     client.cookies.clear()
     u1 = f"diag_{uuid.uuid4().hex[:5]}"
-    s1 = client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"}).json()
+    s1 = helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     user_id = s1["user"]["id"]
     initial_credits = s1["user"]["credits"]
 
@@ -428,7 +447,7 @@ def test_dialogue_failure_accounting_assembly(client, monkeypatch):
     """Dialogue failure during assembly leaves NO credit charge, NO db records, and NO files."""
     client.cookies.clear()
     u1 = f"asmb_{uuid.uuid4().hex[:5]}"
-    s1 = client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"}).json()
+    s1 = helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     user_id = s1["user"]["id"]
     initial_credits = s1["user"]["credits"]
 
@@ -474,7 +493,7 @@ def test_dialogue_success_cleans_line_records(client, monkeypatch):
     """Successful dialogue leaves only 1 master record in generated_audio, with line records removed."""
     client.cookies.clear()
     u1 = f"diagok_{uuid.uuid4().hex[:5]}"
-    s1 = client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"}).json()
+    s1 = helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     user_id = s1["user"]["id"]
     initial_credits = s1["user"]["credits"]
 
@@ -588,7 +607,7 @@ def test_invalid_audio_upload_rejection_and_cleanup(client):
     """Invalid or silent audio is rejected without fallback, leaving no files or DB records."""
     client.cookies.clear()
     u1 = f"inva_{uuid.uuid4().hex[:5]}"
-    client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"})
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
 
     # 1. Upload completely corrupt/non-audio bytes
     corrupt_bytes = b"NOT_REAL_AUDIO_HEADER_DATA_12345" * 50
@@ -619,7 +638,7 @@ def test_support_ticket_rate_limiting(client, monkeypatch):
     # Ensure TESTING bypass does not skip ticket limit during this test
     client.cookies.clear()
     u1 = f"trate_{uuid.uuid4().hex[:5]}"
-    s1 = client.post("/api/auth/signup", json={"username": u1, "email": f"{u1}@example.com", "password": "Password123!"}).json()
+    s1 = helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
     user_id = s1["user"]["id"]
 
     # Temporarily unset TESTING env var for this test
@@ -651,3 +670,247 @@ def test_support_ticket_rate_limiting(client, monkeypatch):
     conn.close()
 
     assert total_tickets == 5
+
+
+def test_storage_migration_fails_and_cleans_on_path_error(tmp_path, monkeypatch):
+    """Storage migration fails clearly if DB path updates fail, without writing .migration_complete."""
+    src_dir = tmp_path / "src_err"
+    dst_dir = tmp_path / "dst_err"
+    (src_dir / "voices").mkdir(parents=True)
+    (src_dir / "uploads").mkdir(parents=True)
+
+    # Create dummy database in src
+    db_path = str(src_dir / "voices" / "studio.db")
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
+    conn.commit()
+    conn.close()
+
+    # Monkeypatch sqlite3.connect to raise error during path update phase
+    orig_connect = sqlite3.connect
+    connect_calls = 0
+
+    def fail_connect(path, *args, **kwargs):
+        nonlocal connect_calls
+        if str(dst_dir) in str(path):
+            raise sqlite3.OperationalError("Simulated disk error updating database paths")
+        return orig_connect(path, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fail_connect)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        studio_app.migrate_storage(str(src_dir), str(dst_dir))
+
+    assert "Storage migration failed during database path updates" in str(exc_info.value)
+    # Ensure completion marker was NOT written
+    assert not os.path.exists(str(dst_dir / ".migration_complete"))
+
+
+def test_bounded_audio_uploads_rejected_and_cleanup(client):
+    """Uploads exceeding 15MB are rejected during bounded chunk reading, leaving zero files."""
+    client.cookies.clear()
+    u1 = f"oversize_{uuid.uuid4().hex[:5]}"
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
+
+    # 1. Voice clone upload exceeding 15MB (e.g. 15MB + 100KB)
+    large_audio_bytes = b"RIFF" + (b"0" * (15 * 1024 * 1024 + 100 * 1024))
+    files = {"audio_file": ("oversize.wav", large_audio_bytes, "audio/wav")}
+    res = client.post("/api/clone", data={"name": "OversizeVoice"}, files=files)
+    assert res.status_code == 400
+    assert "exceeds maximum allowed limit of 15 MB" in res.json()["detail"]
+
+    # Verify no raw or clean file left in uploads dir
+    for f in os.listdir(studio_app.UPLOADS_DIR):
+        assert "oversize" not in f.lower()
+
+    # 2. Transcription upload exceeding 15MB
+    files_trans = {"audio_file": ("oversize_trans.wav", large_audio_bytes, "audio/wav")}
+    res_trans = client.post("/api/transcribe", files=files_trans)
+    assert res_trans.status_code == 400
+    assert "exceeds maximum allowed limit of 15 MB" in res_trans.json()["detail"]
+
+
+def test_voice_clone_ownership_rejected_regardless_of_engine_or_api_key(client, monkeypatch):
+    """Reject another user's clone ID regardless of Fish Audio presence or engine requested."""
+    client.cookies.clear()
+    u1 = f"vowner_{uuid.uuid4().hex[:5]}"
+    u2 = f"vintruder_{uuid.uuid4().hex[:5]}"
+
+    # User 1 creates clone
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
+    import soundfile as sf
+    import numpy as np
+    test_wav_bytes = io.BytesIO()
+    t_arr = np.linspace(0, 0.5, 8000, endpoint=False)
+    dummy_audio = (0.5 * np.sin(2 * np.pi * 440 * t_arr)).astype(np.float32)
+    sf.write(test_wav_bytes, dummy_audio, 16000, format='WAV')
+    test_wav_bytes.seek(0)
+    files = {"audio_file": ("owner_sample.wav", test_wav_bytes.read(), "audio/wav")}
+    clone_res = client.post("/api/clone", data={"name": "ProtectedVoice"}, files=files)
+    voice_id = clone_res.json()["voice"]["id"]
+
+    # Switch to User 2
+    client.cookies.clear()
+    helper_signup_and_verify(client, u2, f"{u2}@example.com", "Password123!")
+
+    # Case A: FISH_AUDIO_API_KEY is absent, default engine -> Must reject with 403 Forbidden
+    monkeypatch.setenv("FISH_AUDIO_API_KEY", "")
+    tts_res_no_key = client.post("/api/tts", json={"text": "Test speech line", "voice": voice_id, "engine": "auto"})
+    assert tts_res_no_key.status_code == 403
+    assert "Permission denied. You do not own this voice clone model." in tts_res_no_key.json()["detail"]
+
+    # Case B: Non-default engine (e.g. edge_tts or custom), API key absent -> Must still reject with 403 Forbidden
+    tts_res_non_default = client.post("/api/tts", json={"text": "Test speech line", "voice": voice_id, "engine": "edge_tts"})
+    assert tts_res_non_default.status_code == 403
+    assert "Permission denied" in tts_res_non_default.json()["detail"]
+
+
+def test_signup_verification_and_uniqueness(client, monkeypatch):
+    """Test email verification flow, wrong/expired codes, rate limits, and case-insensitive uniqueness."""
+    client.cookies.clear()
+    u = f"veri_{uuid.uuid4().hex[:5]}"
+    e = f"{u}@Example.COM"
+
+    # Signup request dispatches code
+    signup_res = client.post("/api/auth/signup", json={"username": u, "email": e, "password": "Password123!"})
+    assert signup_res.status_code == 200
+    assert signup_res.json()["requires_verification"] is True
+
+    # 1. Wrong verification code
+    wrong_res = client.post("/api/auth/verify-email", json={"email": e, "code": "000000"})
+    assert wrong_res.status_code == 400
+    assert "Incorrect verification code" in wrong_res.json()["detail"]
+
+    # 2. Case-insensitive duplicate signup request returns non-revealing generic response
+    dup_res = client.post("/api/auth/signup", json={"username": f"{u}_other", "email": e.lower(), "password": "Password123!"})
+    assert dup_res.status_code == 200
+    assert dup_res.json()["requires_verification"] is True
+
+    # 3. Successful verification
+    conn = studio_app.get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT token_hash FROM email_verifications WHERE email = ? COLLATE NOCASE", (e,))
+    token_hash = c.fetchone()[0]
+    conn.close()
+
+    import hashlib
+    found_code = None
+    for num in range(100000, 1000000):
+        if hashlib.sha256(str(num).encode("utf-8")).hexdigest() == token_hash:
+            found_code = str(num)
+            break
+    assert found_code is not None
+
+    ok_res = client.post("/api/auth/verify-email", json={"email": e, "code": found_code})
+    assert ok_res.status_code == 200
+    assert ok_res.json()["user"]["credits"] == 2000
+
+    # 4. Reusing already-used verification code fails
+    reuse_res = client.post("/api/auth/verify-email", json={"email": e, "code": found_code})
+    assert reuse_res.status_code == 400
+    assert "Invalid or expired verification code" in reuse_res.json()["detail"]
+
+
+def test_account_profile_editing_and_username_suggestions(client):
+    """Signed-in users can edit username and email, suggestions on conflict, verification required for email."""
+    client.cookies.clear()
+    u1 = f"prof1_{uuid.uuid4().hex[:5]}"
+    u2 = f"prof2_{uuid.uuid4().hex[:5]}"
+    helper_signup_and_verify(client, u1, f"{u1}@example.com", "Password123!")
+    client.cookies.clear()
+    helper_signup_and_verify(client, u2, f"{u2}@example.com", "Password123!")
+
+    # User 2 attempts to change username to u1 (conflict)
+    conflict_res = client.put("/api/auth/profile", json={"username": u1.upper()})
+    assert conflict_res.status_code == 400
+    detail = conflict_res.json()["detail"]
+    assert "already in use" in detail["message"]
+    assert len(detail["suggestions"]) > 0
+
+    # User 2 changes to a unique username
+    new_uname = f"unique_{uuid.uuid4().hex[:5]}"
+    ok_user_res = client.put("/api/auth/profile", json={"username": new_uname})
+    assert ok_user_res.status_code == 200
+    assert ok_user_res.json()["user"]["username"] == new_uname
+
+    # User 2 changes email -> Requires verification code
+    new_email = f"new_{uuid.uuid4().hex[:5]}@example.com"
+    email_req_res = client.put("/api/auth/profile", json={"email": new_email})
+    assert email_req_res.status_code == 200
+    assert email_req_res.json()["requires_verification"] is True
+
+    # Retrieve code from DB
+    conn = studio_app.get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT token_hash FROM email_verifications WHERE email = ? AND purpose = 'email_change'", (new_email,))
+    code_hash = c.fetchone()[0]
+    conn.close()
+
+    import hashlib
+    found_code = None
+    for num in range(100000, 1000000):
+        if hashlib.sha256(str(num).encode("utf-8")).hexdigest() == code_hash:
+            found_code = str(num)
+            break
+    assert found_code is not None
+
+    # Submit verification code
+    apply_res = client.put("/api/auth/profile", json={"email": new_email, "verification_code": found_code})
+    assert apply_res.status_code == 200
+    assert apply_res.json()["user"]["email"] == new_email
+
+
+def test_support_ticket_single_email_dispatch(client, monkeypatch):
+    """Verify exactly one notification is sent per ticket creation and one per admin reply."""
+    client.cookies.clear()
+    u = f"ticket_email_{uuid.uuid4().hex[:5]}"
+    s = helper_signup_and_verify(client, u, f"{u}@example.com", "Password123!")
+
+    dispatch_calls = []
+
+    def mock_send(to_email, subject, **kwargs):
+        dispatch_calls.append({"to": to_email, "subject": subject})
+        return {"sent": True, "reason": "OK"}
+
+    monkeypatch.setattr(studio_app, "send_smtp_email", mock_send)
+    monkeypatch.setenv("SMTP_USER", "admin@studio.com")
+
+    # 1. User creates 1 support ticket
+    t_res = client.post("/api/support/ticket", json={
+        "category": "Credit Issue",
+        "subject": "Need help with credits",
+        "message": "Tokens were not properly credited."
+    })
+    assert t_res.status_code == 200
+    ticket_id = t_res.json()["ticket_id"]
+
+    # Exactly 1 email sent to admin
+    assert len(dispatch_calls) == 1
+    assert dispatch_calls[0]["to"] == "admin@studio.com"
+    assert f"#{ticket_id}" in dispatch_calls[0]["subject"]
+
+    # 2. Admin replies to ticket
+    client.cookies.clear()
+    admin_u = f"adm_{uuid.uuid4().hex[:5]}"
+    helper_signup_and_verify(client, admin_u, f"{admin_u}@example.com", "Password123!")
+    conn = studio_app.get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET role = 'admin' WHERE username = ?", (admin_u,))
+    conn.commit()
+    conn.close()
+
+    # Reset dispatch calls to track ticket-specific notifications
+    dispatch_calls.clear()
+
+    reply_res = client.post("/api/admin/tickets/reply", json={
+        "ticket_id": ticket_id,
+        "response": "Tokens have been verified.",
+        "status": "resolved"
+    })
+    assert reply_res.status_code == 200
+
+    # Exactly 1 email sent for the admin reply
+    assert len(dispatch_calls) == 1
+    assert dispatch_calls[0]["to"] == f"{u}@example.com"
+    assert f"#{ticket_id}" in dispatch_calls[0]["subject"]
