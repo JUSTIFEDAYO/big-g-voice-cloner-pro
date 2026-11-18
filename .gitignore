@@ -1,8 +1,14 @@
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
 uploads/
 outputs/
+voices/*.db*
 voices/*.json
+voices/*.bak
 !voices/us_voices_cache.json
 .vscode/
+.pytest_cache/
+tests/__pycache__/

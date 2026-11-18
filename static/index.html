@@ -706,7 +706,7 @@
         <div class="faq-item">
           <div class="faq-title">🔒 Is my data and account secure?</div>
           <div class="faq-text">
-            Yes. All account passwords are encrypted using SHA-256 before storage. User databases utilize parameterized queries to prevent SQL injections, and API credentials are kept server-side only.
+            Yes. All account credentials are protected using industry-standard Bcrypt cryptographic password hashing. Private audio tracks, voice models, and generated speech files are securely isolated per user and served through authenticated streaming links. All API queries utilize strict parameterized statements to completely prevent SQL injection, and rate limiting protects against automated brute-force attempts.
           </div>
         </div>
       </div>
@@ -863,6 +863,19 @@
         { speaker: 'fish_bf322df2096a46f18c579d0baa36f41d', text: 'Splendid to be here Marcus! The acoustic fidelity of both American and British models is remarkably lifelike.' }
       ]
     };
+
+    // API Helper with Automatic Token Headers and Credentials
+    async function apiFetch(url, options = {}) {
+      options.credentials = 'include';
+      if (!options.headers) options.headers = {};
+      const token = localStorage.getItem('bigg_auth_token');
+      if (token && !(options.headers instanceof Headers)) {
+        if (!options.headers['Authorization']) {
+          options.headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      return fetch(url, options);
+    }
 
     // Tab Switching
     function switchTab(tabId) {
@@ -1142,22 +1155,25 @@
       }
     }
 
-    function logout() {
+    async function logout() {
+      try {
+        await apiFetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {}
       localStorage.removeItem('bigg_auth_token');
       localStorage.removeItem('bigg_auth_user_obj');
       showToast('Logged out.');
       checkAuth();
     }
 
-    async function refreshUserTokens(userId) {
-      if (!userId) return;
+    async function refreshUserTokens() {
       try {
-        const res = await fetch(`/api/auth/me?user_id=${userId}`);
+        const res = await apiFetch('/api/auth/me');
         const data = await res.json();
         if (data.success && data.user) {
           document.getElementById('header-user-tokens').textContent = data.user.credits.toLocaleString();
           const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
           userObj.credits = data.user.credits;
+          userObj.role = data.user.role;
           localStorage.setItem('bigg_auth_user_obj', JSON.stringify(userObj));
         }
       } catch (e) {
@@ -1167,17 +1183,15 @@
 
     async function init() {
       try {
-        const confRes = await fetch('/api/config');
+        const confRes = await apiFetch('/api/config');
         const conf = await confRes.json();
         if (conf.engine_label) {
           document.getElementById('engine-text').textContent = conf.engine_label;
-        } else if (conf.fish_audio_configured) {
-          document.getElementById('engine-text').textContent = `Neural Studio Engine Ready`;
         }
 
         const [vRes, cRes] = await Promise.all([
-          fetch('/api/models'),
-          fetch('/api/cloned-voices')
+          apiFetch('/api/models'),
+          apiFetch('/api/cloned-voices')
         ]);
         const vData = await vRes.json();
         state.allVoices = vData.voices || [];
@@ -1193,7 +1207,7 @@
 
     async function fetchClonedVoices() {
       try {
-        const res = await fetch('/api/cloned-voices');
+        const res = await apiFetch('/api/cloned-voices');
         state.clonedVoices = await res.json();
         document.getElementById('cloned-badge').textContent = state.clonedVoices.length;
         renderClonedVoicesCards();
@@ -1296,11 +1310,10 @@
       const userObj = JSON.parse(localStorage.getItem('bigg_auth_user_obj') || '{}');
 
       try {
-        const res = await fetch('/api/tts', {
+        const res = await apiFetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: userObj.id,
             text: text,
             voice: state.currentVoice,
             rate: `${r >= 0 ? '+' : ''}${r}%`,
@@ -1325,7 +1338,7 @@
         const player = document.getElementById('audio-player');
         player.src = data.audio_url;
         document.getElementById('out-download').href = data.audio_url;
-        document.getElementById('out-meta').textContent = `Rendered with ${data.engine_used.replace(/fish_audio/g, 'Studio Neural HD').replace(/fish_pro/g, 'Pro Voice HD').replace(/_/g, ' ').toUpperCase()}`;
+        document.getElementById('out-meta').textContent = `Rendered with ${data.engine_used}`;
         document.getElementById('output-box').style.display = 'flex';
         player.play();
         showToast('Speech synthesized successfully!');
@@ -1349,7 +1362,7 @@
       fd.append('audio_file', state.selectedSampleFile);
 
       try {
-        const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+        const res = await apiFetch('/api/transcribe', { method: 'POST', body: fd });
         const data = await res.json();
         if (data.success && data.transcript) {
           document.getElementById('clone-transcript').value = data.transcript;
@@ -1395,7 +1408,7 @@
       fd.append('audio_file', state.selectedSampleFile);
 
       try {
-        const res = await fetch('/api/clone', { method: 'POST', body: fd });
+        const res = await apiFetch('/api/clone', { method: 'POST', body: fd });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Cloning failed');
 
@@ -1431,7 +1444,7 @@
             <span>Pitch: ${v.profile?.estimated_pitch_hz || 180}Hz</span> •
             <span>Duration: ${v.profile?.duration || 0}s</span>
           </div>
-          <button onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")} (Cloned)', '${v.description.replace(/'/g, "\\'")}', '🧬'); document.querySelectorAll('.tab-btn')[0].click();" style="margin-top: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid var(--accent-indigo); color: #fff; padding: 6px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+          <button onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")} (Cloned)', '${(v.description || '').replace(/'/g, "\\'")}', '🧬'); document.querySelectorAll('.tab-btn')[0].click();" style="margin-top: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid var(--accent-indigo); color: #fff; padding: 6px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
             Use in Studio
           </button>
         </div>
@@ -1441,7 +1454,7 @@
     async function deleteVoice(id) {
       if (!confirm('Are you sure you want to permanently delete this cloned voice?')) return;
       try {
-        const res = await fetch(`/api/cloned-voices/${id}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/cloned-voices/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           showToast(data.message || 'Voice deleted.');
@@ -1509,7 +1522,7 @@
           lines: validLines.map(l => ({ speaker: l.speaker, speaker_name: 'Actor', text: l.text }))
         };
 
-        const res = await fetch('/api/dialogue', {
+        const res = await apiFetch('/api/dialogue', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1517,6 +1530,10 @@
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Dialogue render failed');
+
+        if (data.credits_remaining !== undefined && data.credits_remaining !== null) {
+          document.getElementById('header-user-tokens').textContent = data.credits_remaining.toLocaleString();
+        }
 
         const player = document.getElementById('dialogue-player');
         player.src = data.audio_url;
@@ -1561,10 +1578,6 @@
     // Support & Complaint Ticket Logic
     async function handleCreateTicket(e) {
       e.preventDefault();
-      const userStr = localStorage.getItem('bigg_auth_user_obj');
-      const user = userStr ? JSON.parse(userStr) : null;
-      if (!user) return showToast('Please sign in to file a complaint', true);
-
       const category = document.getElementById('ticket-category').value;
       const subject = document.getElementById('ticket-subject').value.trim();
       const message = document.getElementById('ticket-message').value.trim();
@@ -1574,13 +1587,10 @@
       btn.innerHTML = '<span>⏳ Submitting...</span>';
 
       try {
-        const res = await fetch('/api/support/ticket', {
+        const res = await apiFetch('/api/support/ticket', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: user.id,
-            username: user.username,
-            email: user.email,
             category: category,
             subject: subject,
             message: message
@@ -1604,13 +1614,9 @@
     }
 
     async function fetchMyTickets() {
-      const userStr = localStorage.getItem('bigg_auth_user_obj');
-      const user = userStr ? JSON.parse(userStr) : null;
-      if (!user) return;
-
       const listEl = document.getElementById('user-tickets-list');
       try {
-        const res = await fetch(`/api/support/my-tickets?email=${encodeURIComponent(user.email)}`);
+        const res = await apiFetch('/api/support/my-tickets');
         const data = await res.json();
         if (data.tickets && data.tickets.length > 0) {
           listEl.innerHTML = data.tickets.map(t => `
@@ -1685,8 +1691,8 @@
     async function fetchAdminData() {
       try {
         const [uRes, tRes] = await Promise.all([
-          fetch('/api/admin/users'),
-          fetch('/api/admin/tickets')
+          apiFetch('/api/admin/users'),
+          apiFetch('/api/admin/tickets')
         ]);
         const data = await uRes.json();
         const tData = await tRes.json();
@@ -1739,7 +1745,7 @@
 
     async function resolveSupportTicketDirect(ticketId) {
       try {
-        const res = await fetch(`/api/admin/tickets/${ticketId}/resolve`, { method: 'POST' });
+        const res = await apiFetch(`/api/admin/tickets/${ticketId}/resolve`, { method: 'POST' });
         const data = await res.json();
         showToast(data.message || 'Marked as resolved');
         fetchAdminData();
@@ -1756,7 +1762,7 @@
       const finalStatus = shouldResolve ? 'resolved' : 'open';
 
       try {
-        const res = await fetch('/api/admin/tickets/reply', {
+        const res = await apiFetch('/api/admin/tickets/reply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ticket_id: ticketId, response: resp.trim(), status: finalStatus })
@@ -1770,22 +1776,22 @@
     }
 
     async function editUserCredits(userId, current) {
-      const val = prompt('Enter new credit balance for this user:', current);
+      const val = prompt('Enter new token balance for this user:', current);
       if (val === null) return;
       const num = parseInt(val);
       if (isNaN(num)) return alert('Please enter a valid number');
 
       try {
-        const res = await fetch('/api/admin/users/credits', {
+        const res = await apiFetch('/api/admin/users/credits', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: userId, credits: num })
         });
         const data = await res.json();
-        showToast(data.message || 'Credits updated');
+        showToast(data.message || 'Tokens updated');
         fetchAdminData();
       } catch (e) {
-        showToast('Failed to update credits', true);
+        showToast('Failed to update tokens', true);
       }
     }
 
@@ -1793,7 +1799,7 @@
       const fd = new FormData();
       fd.append('status', targetStatus);
       try {
-        const res = await fetch(`/api/admin/users/${userId}/status`, { method: 'POST', body: fd });
+        const res = await apiFetch(`/api/admin/users/${userId}/status`, { method: 'POST', body: fd });
         const data = await res.json();
         showToast(data.message);
         fetchAdminData();
@@ -1805,7 +1811,7 @@
     async function deleteUserAccount(userId) {
       if (!confirm('Are you sure you want to permanently delete this user?')) return;
       try {
-        const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
         const data = await res.json();
         showToast(data.message);
         fetchAdminData();
