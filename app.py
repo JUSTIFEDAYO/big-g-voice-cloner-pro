@@ -67,7 +67,9 @@ from pydantic import BaseModel, Field
 # Load environment configuration
 load_dotenv(override=False)
 
-# Startup SMTP sanity check - surfaces missing credentials in Render logs immediately at boot
+# Startup Email sanity check - surfaces missing credentials in Render logs immediately at boot
+_brevo_api_key_check = os.getenv("BREVO_API_KEY", "").strip()
+_resend_api_key_check = os.getenv("RESEND_API_KEY", "").strip()
 _smtp_startup_user = os.getenv("SMTP_USER", "").strip()
 _smtp_startup_pass = os.getenv("SMTP_PASSWORD", "").strip()
 
@@ -78,12 +80,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VoiceClonerPro")
 
-if not _smtp_startup_user or not _smtp_startup_pass:
+if not (_brevo_api_key_check or _resend_api_key_check or (_smtp_startup_user and _smtp_startup_pass)):
     logger.warning(
-        "STARTUP WARNING: SMTP_USER or SMTP_PASSWORD is not configured. "
+        "STARTUP WARNING: Neither BREVO_API_KEY, RESEND_API_KEY, nor SMTP credentials are configured. "
         "Email delivery (signup verification codes, password resets) is DISABLED. "
-        "Set SMTP_USER and SMTP_PASSWORD in Render > Environment > Add Environment Variable, then redeploy."
+        "Set BREVO_API_KEY in Render > Environment > Add Environment Variable, then redeploy."
     )
+elif _brevo_api_key_check:
+    logger.info("Email service initialized via Brevo HTTP API.")
 
 # Base File Paths & Storage Persistence
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -538,7 +542,19 @@ async def cleanup_stale_files():
 
 # Email Dispatch & Verification
 def check_smtp_health() -> Dict[str, Any]:
-    """Diagnostic check for SMTP configuration without exposing secrets."""
+    """Diagnostic check for SMTP/Email API configuration without exposing secrets."""
+    brevo_key = os.getenv("BREVO_API_KEY", "").strip()
+    if brevo_key:
+        return {
+            "configured": True,
+            "provider": "brevo",
+            "host": "api.brevo.com",
+            "port": 443,
+            "user_configured": True,
+            "pass_configured": True,
+            "status": "Brevo HTTP API configured and active."
+        }
+
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
     smtp_user = os.getenv("SMTP_USER", "").strip()
@@ -551,7 +567,7 @@ def check_smtp_health() -> Dict[str, Any]:
             "port": smtp_port,
             "user_configured": bool(smtp_user),
             "pass_configured": bool(smtp_pass),
-            "status": "Missing SMTP_USER or SMTP_PASSWORD environment variables."
+            "status": "Missing BREVO_API_KEY or SMTP credentials."
         }
 
     try:
@@ -587,20 +603,86 @@ def check_smtp_health() -> Dict[str, Any]:
         }
 
 def send_smtp_email(to_email: str, subject: str, html_content: str, text_content: str) -> dict:
-    # Under test mode or if recipient domain is an example/test domain, skip sending real outbound email
+    """Send transactional email via Brevo HTTP API (primary), Resend HTTP API, or SMTP fallback.
+    Returns {"sent": True/False, "reason": str}
+    """
+    # Under test mode or synthetic test domain - simulate without sending
     clean_to = to_email.strip().lower()
     if os.getenv("TESTING") == "1" or clean_to.endswith("@example.com") or clean_to.endswith("@test.com"):
-        logger.info(f"Skipping actual SMTP dispatch to synthetic test address: {to_email}")
+        logger.info(f"Skipping actual email dispatch to synthetic test address: {to_email}")
         return {"sent": True, "reason": "Simulated dispatch in test environment."}
 
+    # ── PRIMARY: Brevo HTTP API (works seamlessly on Render free tier) ───────
+    brevo_api_key = os.getenv("BREVO_API_KEY", "").strip()
+    if brevo_api_key:
+        try:
+            import urllib.request as _ureq, json as _json
+            sender_email = os.getenv("BREVO_SENDER_EMAIL", "ifelexdan@gmail.com").strip()
+            sender_name = os.getenv("BREVO_SENDER_NAME", "BIG G Voice Cloner Pro").strip()
+            payload = _json.dumps({
+                "sender": {"name": sender_name, "email": sender_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_content,
+                "textContent": text_content
+            }).encode("utf-8")
+            req = _ureq.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=payload,
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with _ureq.urlopen(req, timeout=15) as resp:
+                result = _json.loads(resp.read().decode("utf-8"))
+            msg_id = result.get("messageId", "")
+            logger.info(f"Brevo delivery succeeded to {to_email}: messageId={msg_id}")
+            return {"sent": True, "reason": "Email dispatched via Brevo."}
+        except Exception as e:
+            logger.error(f"Brevo delivery FAILED to {to_email}: {type(e).__name__} - {e}")
+            return {"sent": False, "reason": f"Brevo API error: {type(e).__name__} - {e}"}
+
+    # ── SECONDARY: Resend HTTP API ───────────────────────────────────────────
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+    if resend_api_key:
+        try:
+            import urllib.request as _ureq, json as _json
+            from_addr = os.getenv("RESEND_FROM_EMAIL", "BIG G Voice Cloner Pro <onboarding@resend.dev>").strip()
+            payload = _json.dumps({
+                "from": from_addr,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+                "text": text_content
+            }).encode("utf-8")
+            req = _ureq.Request(
+                "https://api.resend.com/emails",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with _ureq.urlopen(req, timeout=15) as resp:
+                result = _json.loads(resp.read().decode("utf-8"))
+            logger.info(f"Resend delivery succeeded to {to_email}: id={result.get('id', '')}")
+            return {"sent": True, "reason": "Email dispatched via Resend."}
+        except Exception as e:
+            logger.error(f"Resend delivery FAILED to {to_email}: {type(e).__name__} - {e}")
+            return {"sent": False, "reason": f"Resend API error: {type(e).__name__} - {e}"}
+
+    # ── FALLBACK: Direct SMTP (local dev only - blocked on Render free tier) ──
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
 
     if not smtp_user or not smtp_pass:
-        logger.warning(f"SMTP delivery skipped for {to_email}: SMTP_USER or SMTP_PASSWORD not configured in environment.")
-        return {"sent": False, "reason": "SMTP credentials not configured."}
+        logger.warning(f"Email delivery skipped for {to_email}: No BREVO_API_KEY, RESEND_API_KEY, or SMTP credentials configured.")
+        return {"sent": False, "reason": "No email provider configured (set BREVO_API_KEY in Render Environment Variables)."}
 
     try:
         msg = MIMEMultipart("alternative")
@@ -614,8 +696,7 @@ def send_smtp_email(to_email: str, subject: str, html_content: str, text_content
         msg.attach(part2)
 
         if smtp_port == 465:
-            server_cls = smtplib.SMTP_SSL
-            server = server_cls(smtp_host, smtp_port, timeout=12)
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=12)
             server.ehlo()
         else:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
@@ -627,10 +708,10 @@ def send_smtp_email(to_email: str, subject: str, html_content: str, text_content
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [to_email], msg.as_string())
 
-        logger.info(f"Email successfully dispatched to {to_email}")
-        return {"sent": True, "reason": "Email dispatched successfully."}
+        logger.info(f"SMTP delivery succeeded to {to_email}")
+        return {"sent": True, "reason": "Email dispatched via SMTP."}
     except Exception as e:
-        logger.error(f"Failed sending email to {to_email}: {type(e).__name__} - {e}")
+        logger.error(f"SMTP delivery FAILED to {to_email}: {type(e).__name__} - {e}")
         return {"sent": False, "reason": f"SMTP transport error: {type(e).__name__} - {e}"}
 
 # Curated High-Fidelity Human Pro Voices
@@ -2480,27 +2561,27 @@ def admin_smtp_health_check(admin_user: Dict[str, Any] = Depends(require_admin))
 
 @app.post("/api/admin/smtp-send-test")
 def admin_smtp_send_test(admin_user: Dict[str, Any] = Depends(require_admin)):
-    """Admin-only: sends a live test email to SMTP_USER to verify delivery works end-to-end on production."""
-    smtp_user = os.getenv("SMTP_USER", "").strip()
-    if not smtp_user:
-        return JSONResponse({"success": False, "detail": "SMTP_USER not configured."})
+    """Admin-only: sends a live test email to verify delivery works end-to-end on production."""
+    target_email = os.getenv("BREVO_SENDER_EMAIL", "").strip() or os.getenv("SMTP_USER", "").strip() or admin_user.get("email", "").strip()
+    if not target_email:
+        return JSONResponse({"success": False, "detail": "No recipient configured. Set BREVO_SENDER_EMAIL or SMTP_USER."})
     test_html = (
         "<div style='font-family:Arial,sans-serif;padding:20px;background:#0b0f19;color:#f8fafc;border-radius:8px;'>"
-        "<h2 style='color:#6366f1;'>SMTP Test Successful</h2>"
-        "<p>Your Render SMTP environment variables are correctly configured and email delivery is working.</p>"
+        "<h2 style='color:#6366f1;'>Email Delivery Test Successful</h2>"
+        "<p>Your Render email environment variables are correctly configured and email delivery is working.</p>"
         "<p><small>Sent by /api/admin/smtp-send-test</small></p></div>"
     )
     result = send_smtp_email(
-        to_email=smtp_user,
-        subject="[SMTP TEST] BIG G Voice Cloner Pro - Email Delivery Check",
+        to_email=target_email,
+        subject="[EMAIL TEST] BIG G Voice Cloner Pro - Email Delivery Check",
         html_content=test_html,
-        text_content="BIG G Voice Cloner Pro: SMTP test email - delivery is working correctly."
+        text_content="BIG G Voice Cloner Pro: Email delivery test successful."
     )
     if result.get("sent"):
-        logger.info(f"Admin SMTP send-test succeeded: email dispatched to {smtp_user}")
-        return JSONResponse({"success": True, "detail": f"Test email dispatched to {smtp_user}. Check inbox."})
+        logger.info(f"Admin email send-test succeeded: dispatched to {target_email}")
+        return JSONResponse({"success": True, "detail": f"Test email dispatched to {target_email}. Check inbox."})
     else:
-        logger.error(f"Admin SMTP send-test FAILED: {result.get('reason')}")
+        logger.error(f"Admin email send-test FAILED: {result.get('reason')}")
         return JSONResponse({"success": False, "detail": result.get("reason")})
 
 @app.get("/api/admin/tickets")
