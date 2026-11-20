@@ -67,12 +67,23 @@ from pydantic import BaseModel, Field
 # Load environment configuration
 load_dotenv(override=False)
 
+# Startup SMTP sanity check - surfaces missing credentials in Render logs immediately at boot
+_smtp_startup_user = os.getenv("SMTP_USER", "").strip()
+_smtp_startup_pass = os.getenv("SMTP_PASSWORD", "").strip()
+
 # Structured, Privacy-Safe Logger Setup
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger("VoiceClonerPro")
+
+if not _smtp_startup_user or not _smtp_startup_pass:
+    logger.warning(
+        "STARTUP WARNING: SMTP_USER or SMTP_PASSWORD is not configured. "
+        "Email delivery (signup verification codes, password resets) is DISABLED. "
+        "Set SMTP_USER and SMTP_PASSWORD in Render > Environment > Add Environment Variable, then redeploy."
+    )
 
 # Base File Paths & Storage Persistence
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1018,7 +1029,11 @@ def _send_verification_email_worker(email: str, username: str, code: str):
         text_content=text_email
     )
     if not delivery.get("sent", False):
-        logger.warning(f"Background email verification delivery failure: {delivery.get('reason')}")
+        logger.error(
+            f"[EMAIL DELIVERY FAILED] Signup verification code could not be sent to {email}. "
+            f"Reason: {delivery.get('reason')}. "
+            "ACTION REQUIRED: Check SMTP_USER and SMTP_PASSWORD in Render Environment Variables."
+        )
 
 def _generate_username_suggestions(base_u: str, existing_usernames: set) -> List[str]:
     """Generates 3 available username suggestions based on base_u."""
@@ -2462,6 +2477,31 @@ def admin_smtp_health_check(admin_user: Dict[str, Any] = Depends(require_admin))
     """Safe SMTP diagnostics for platform admin."""
     health = check_smtp_health()
     return JSONResponse({"success": True, "smtp": health})
+
+@app.post("/api/admin/smtp-send-test")
+def admin_smtp_send_test(admin_user: Dict[str, Any] = Depends(require_admin)):
+    """Admin-only: sends a live test email to SMTP_USER to verify delivery works end-to-end on production."""
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    if not smtp_user:
+        return JSONResponse({"success": False, "detail": "SMTP_USER not configured."})
+    test_html = (
+        "<div style='font-family:Arial,sans-serif;padding:20px;background:#0b0f19;color:#f8fafc;border-radius:8px;'>"
+        "<h2 style='color:#6366f1;'>SMTP Test Successful</h2>"
+        "<p>Your Render SMTP environment variables are correctly configured and email delivery is working.</p>"
+        "<p><small>Sent by /api/admin/smtp-send-test</small></p></div>"
+    )
+    result = send_smtp_email(
+        to_email=smtp_user,
+        subject="[SMTP TEST] BIG G Voice Cloner Pro - Email Delivery Check",
+        html_content=test_html,
+        text_content="BIG G Voice Cloner Pro: SMTP test email - delivery is working correctly."
+    )
+    if result.get("sent"):
+        logger.info(f"Admin SMTP send-test succeeded: email dispatched to {smtp_user}")
+        return JSONResponse({"success": True, "detail": f"Test email dispatched to {smtp_user}. Check inbox."})
+    else:
+        logger.error(f"Admin SMTP send-test FAILED: {result.get('reason')}")
+        return JSONResponse({"success": False, "detail": result.get("reason")})
 
 @app.get("/api/admin/tickets")
 def admin_get_all_tickets(admin_user: Dict[str, Any] = Depends(require_admin)):
