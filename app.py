@@ -794,6 +794,276 @@ CURATED_HUMAN_VOICES = [
         "is_fish_pro": True
     }
 ]
+# Curated Studio-Grade ElevenLabs Voices
+CURATED_ELEVEN_VOICES = [
+    {
+        "id": "eleven_21m00Tcm4TlvDq8ikWAM",
+        "eleven_id": "21m00Tcm4TlvDq8ikWAM",
+        "name": "Rachel - Studio Realism & Conversational",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Hyper-realistic, calm, authentic young American female voice.",
+        "avatar": "🎧",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_AZnzlk1XvdvUeBnXmlld",
+        "eleven_id": "AZnzlk1XvdvUeBnXmlld",
+        "name": "Domi - Emotive & Passionate Drama",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "High-emotion, bold, expressive voice for intense dynamic speech.",
+        "avatar": "🔥",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_EXAVITQu4vr4xnSDxMaL",
+        "eleven_id": "EXAVITQu4vr4xnSDxMaL",
+        "name": "Bella - Soft Companion & Storyteller",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Gentle, soothing, intimate companion voice with natural whisper nuances.",
+        "avatar": "🌸",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_ErXwobaYiN019PkySvjV",
+        "eleven_id": "ErXwobaYiN019PkySvjV",
+        "name": "Antoni - Charismatic & Engaging Narrator",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Warm, articulate American male storyteller with lively cadence.",
+        "avatar": "🎙️",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_MF3mGyEYCl7XYWbV9V6O",
+        "eleven_id": "MF3mGyEYCl7XYWbV9V6O",
+        "name": "Elli - Energetic Anime & Youth",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Playful, bright, vibrant young character voice with animated inflection.",
+        "avatar": "🎮",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_TxGEqnHWrfWFTfGW9XjX",
+        "eleven_id": "TxGEqnHWrfWFTfGW9XjX",
+        "name": "Josh - Deep & Chill Late-Night",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Ultra-relaxed, resonant, low-pitch conversational companion voice.",
+        "avatar": "🌙",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_VR6AewLTigWG4xSOukaG",
+        "eleven_id": "VR6AewLTigWG4xSOukaG",
+        "name": "Arnold - Bold Hero & Commander",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Authoritative, confident action hero voice with crisp projection.",
+        "avatar": "⚔️",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_pNInz6obpgDQGcFmaJgB",
+        "eleven_id": "pNInz6obpgDQGcFmaJgB",
+        "name": "Adam - Rich Baritone Host",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Deep, warm, magnetic American baritone voice for podcasts and ads.",
+        "avatar": "📻",
+        "is_eleven": True,
+        "is_pro": True
+    },
+    {
+        "id": "eleven_yoZ06aMxZJJ28mfd3POQ",
+        "eleven_id": "yoZ06aMxZJJ28mfd3POQ",
+        "name": "Sam - Dynamic Cinematic Storyteller",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "ElevenLabs Studio",
+        "description": "Versatile narrator capable of gripping suspense and dramatic tension.",
+        "avatar": "📖",
+        "is_eleven": True,
+        "is_pro": True
+    }
+]
+
+# Curated Character.ai Voice Archetypes & Presets
+CHARACTER_AI_VOICES = [
+    {
+        "id": "char_tsundere_anime",
+        "name": "Kira - Tsundere Anime Companion",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "Character AI",
+        "description": "Fiery, playful anime character with animated tone and rapid inflections.",
+        "avatar": "🎀",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "MF3mGyEYCl7XYWbV9V6O",
+        "fallback_neural": "en-US-AvaMultilingualNeural",
+        "default_emotion": "excited",
+        "default_rate": "+10%",
+        "default_pitch": "+12Hz",
+        "suggested_tags": "[sigh] [laugh] [gasp]"
+    },
+    {
+        "id": "char_cyberpunk_hacker",
+        "name": "Cipher - Cyberpunk Rogue AI",
+        "gender": "Male",
+        "locale": "en-US",
+        "category": "Character AI",
+        "description": "Gritty, sarcastic digital operative with confident deadpan pacing.",
+        "avatar": "⚡",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "TxGEqnHWrfWFTfGW9XjX",
+        "fallback_neural": "en-US-BrianMultilingualNeural",
+        "default_emotion": "sarcastic",
+        "default_rate": "+5%",
+        "default_pitch": "-4Hz",
+        "suggested_tags": "[sigh] [pause] [clears throat]"
+    },
+    {
+        "id": "char_whispering_therapist",
+        "name": "Aria - Late-Night Empathic Companion",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "Character AI",
+        "description": "Ultra-soothing, warm whispery confidante with intimate presence.",
+        "avatar": "☕",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "EXAVITQu4vr4xnSDxMaL",
+        "fallback_neural": "en-US-AvaMultilingualNeural",
+        "default_emotion": "whisper",
+        "default_rate": "-12%",
+        "default_pitch": "-5Hz",
+        "suggested_tags": "[whisper] [pause] [sigh]"
+    },
+    {
+        "id": "char_dark_overlord",
+        "name": "Malakor - Dark Overlord & Villain",
+        "gender": "Male",
+        "locale": "en-GB",
+        "category": "Character AI",
+        "description": "Resonant, menacing fantasy antagonist with dark theatrical charisma.",
+        "avatar": "💀",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "VR6AewLTigWG4xSOukaG",
+        "fallback_neural": "en-GB-RyanNeural",
+        "default_emotion": "angry",
+        "default_rate": "-8%",
+        "default_pitch": "-12Hz",
+        "suggested_tags": "[pause] [laugh]"
+    },
+    {
+        "id": "char_cheerful_companion",
+        "name": "Sunny - Bubbly AI Assistant",
+        "gender": "Female",
+        "locale": "en-US",
+        "category": "Character AI",
+        "description": "Cheerful, bright, always-supportive optimistic companion.",
+        "avatar": "✨",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "21m00Tcm4TlvDq8ikWAM",
+        "fallback_neural": "en-US-AvaMultilingualNeural",
+        "default_emotion": "cheerful",
+        "default_rate": "+8%",
+        "default_pitch": "+6Hz",
+        "suggested_tags": "[laugh] [excited]"
+    },
+    {
+        "id": "char_dungeon_master",
+        "name": "Eldrin - Fantasy Dungeon Master",
+        "gender": "Male",
+        "locale": "en-GB",
+        "category": "Character AI",
+        "description": "Atmospheric, legendary tabletop narrator bringing worlds to life.",
+        "avatar": "🧙‍♂️",
+        "is_character": True,
+        "preferred_engine": "elevenlabs",
+        "fallback_eleven_id": "yoZ06aMxZJJ28mfd3POQ",
+        "fallback_neural": "en-GB-ArthurNeural",
+        "default_emotion": "mysterious",
+        "default_rate": "-5%",
+        "default_pitch": "-4Hz",
+        "suggested_tags": "[pause] [whisper]"
+    }
+]
+
+def process_emotion_text_and_prosody(text: str, emotion: Optional[str] = "neutral", rate: Optional[str] = "+0%", pitch: Optional[str] = "+0Hz", volume: Optional[str] = "+0%"):
+    """
+    Sanitizes natural expression tags (e.g. [whisper], [laugh], [sigh], [pause])
+    and converts them into emotive prosody parameters for natural speech flow.
+    """
+    clean = text or ""
+    emo = (emotion or "neutral").lower()
+
+    tag_pattern = re.compile(r'\[(whisper|laugh|sigh|gasp|cough|pause|excited|angry|crying|clears throat)\]', re.IGNORECASE)
+    has_whisper = bool(re.search(r'\[whisper\]', clean, re.I)) or emo in ["whisper", "soothing"]
+    has_excited = bool(re.search(r'\[excited\]', clean, re.I)) or emo in ["excited", "cheerful"]
+    has_angry = bool(re.search(r'\[angry\]', clean, re.I)) or emo in ["angry", "intense"]
+    has_sad = bool(re.search(r'\[(sad|crying)\]', clean, re.I)) or emo in ["sad", "melancholy"]
+    has_sarcastic = emo == "sarcastic"
+    has_mysterious = emo == "mysterious"
+
+    # Replace [pause] with an expressive ellipsis pause
+    spoken_text = re.sub(r'\[pause\]', '... ', clean, flags=re.I)
+    # Strip literal bracket markers so audio engines don't recite 'bracket laugh bracket'
+    spoken_text = tag_pattern.sub('', spoken_text).strip()
+    spoken_text = re.sub(r'\s+', ' ', spoken_text)
+
+    eff_rate = rate or "+0%"
+    eff_pitch = pitch or "+0Hz"
+    eff_vol = volume or "+0%"
+
+    if has_whisper:
+        eff_vol = "-35%"
+        eff_pitch = "-6Hz"
+        eff_rate = "-10%"
+    elif has_excited:
+        eff_rate = "+14%"
+        eff_pitch = "+10Hz"
+        eff_vol = "+12%"
+    elif has_angry:
+        eff_rate = "+8%"
+        eff_pitch = "+8Hz"
+        eff_vol = "+25%"
+    elif has_sad:
+        eff_rate = "-14%"
+        eff_pitch = "-8Hz"
+        eff_vol = "-15%"
+    elif has_sarcastic:
+        eff_rate = "-6%"
+        eff_pitch = "-4Hz"
+    elif has_mysterious:
+        eff_rate = "-10%"
+        eff_pitch = "-6Hz"
+        eff_vol = "-10%"
+
+    return spoken_text, eff_rate, eff_pitch, eff_vol
+
 
 # Audio Constants & Helpers
 ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
@@ -1071,6 +1341,10 @@ class TTSRequest(BaseModel):
     chunk_length: Optional[int] = Field(200, ge=100, le=300)
     enhance_audio: Optional[bool] = False
     dsp_effect: Optional[str] = "none"
+    emotion: Optional[str] = "neutral"
+    style: Optional[float] = Field(0.45, ge=0.0, le=1.0)
+    stability: Optional[float] = Field(0.50, ge=0.0, le=1.0)
+    similarity_boost: Optional[float] = Field(0.75, ge=0.0, le=1.0)
 
 class DialogueLine(BaseModel):
     speaker: str = Field(..., min_length=2, max_length=100)
@@ -2155,9 +2429,13 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
 
     conn.close()
 
-    # Voice Resolution
-    api_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
+    # Voice Resolution & Character / ElevenLabs mapping
+    fish_api_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
+    eleven_api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+
     pro_match = next((v for v in CURATED_HUMAN_VOICES if v["id"] == req.voice), None)
+    eleven_match = next((v for v in CURATED_ELEVEN_VOICES if v["id"] == req.voice), None)
+    char_match = next((v for v in CHARACTER_AI_VOICES if v["id"] == req.voice), None)
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -2176,9 +2454,55 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
     generation_succeeded = False
     is_fallback = False
 
+    # Emotion & Prosody resolution
+    chosen_emotion = req.emotion or (char_match.get("default_emotion") if char_match else "neutral")
+    base_rate = req.rate or (char_match.get("default_rate") if char_match else "+0%")
+    base_pitch = req.pitch or (char_match.get("default_pitch") if char_match else "+0Hz")
+    spoken_text, eff_rate, eff_pitch, eff_vol = process_emotion_text_and_prosody(
+        clean_text,
+        emotion=chosen_emotion,
+        rate=base_rate,
+        pitch=base_pitch,
+        volume=req.volume or "+0%"
+    )
+
     try:
+        # 0. ElevenLabs Engine (Direct or Character.ai preset with ElevenLabs key)
+        target_eleven_id = None
+        if eleven_match:
+            target_eleven_id = eleven_match["eleven_id"]
+        elif char_match and char_match.get("fallback_eleven_id"):
+            target_eleven_id = char_match["fallback_eleven_id"]
+
+        if target_eleven_id and eleven_api_key and req.engine in ["auto", "elevenlabs"]:
+            try:
+                e_url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_eleven_id}"
+                e_headers = {
+                    "xi-api-key": eleven_api_key,
+                    "Content-Type": "application/json"
+                }
+                e_payload = {
+                    "text": spoken_text,
+                    "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
+                    "voice_settings": {
+                        "stability": float(np.clip(req.stability or 0.50, 0.1, 1.0)),
+                        "similarity_boost": float(np.clip(req.similarity_boost or 0.75, 0.1, 1.0)),
+                        "style": float(np.clip(req.style or 0.45, 0.0, 1.0)),
+                        "use_speaker_boost": True
+                    }
+                }
+                async with httpx.AsyncClient(timeout=40.0) as client:
+                    resp = await client.post(e_url, headers=e_headers, json=e_payload)
+                if resp.status_code == 200 and len(resp.content) > 100:
+                    with open(output_path, "wb") as f:
+                        f.write(resp.content)
+                    engine_used = "Character.ai ElevenLabs Studio HD" if char_match else "ElevenLabs Neural Studio HD"
+                    generation_succeeded = True
+            except Exception as e:
+                logger.warning(f"ElevenLabs synthesis failed, falling back to neural: {e}")
+
         # 1. Curated Ultra-Human Pro Voice via Fish Audio
-        if pro_match and api_key:
+        if not generation_succeeded and pro_match and fish_api_key:
             try:
                 payload = {
                     "text": clean_text,
@@ -2237,20 +2561,21 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
                 except Exception as e:
                     logger.warning(f"Zero-shot acoustic cloning failed, falling back to standard neural: {e}")
 
-        # 3. Standard / Fallback Neural Synthesis
+        # 3. Standard / Fallback Neural Synthesis with Character & Emotion Nuance
         if not generation_succeeded:
-            is_fallback = bool(cloned_match or pro_match)
+            is_fallback = bool(cloned_match or pro_match or eleven_match or char_match)
             if cloned_match:
                 target_voice = cloned_match["base_model"]
-                pitch_val = "+0Hz"
             elif pro_match:
                 target_voice = "en-GB-RyanNeural" if pro_match["locale"] == "en-GB" else ("en-US-AndrewMultilingualNeural" if pro_match["gender"] == "Male" else "en-US-AvaMultilingualNeural")
-                pitch_val = "+0Hz"
+            elif eleven_match:
+                target_voice = "en-US-AvaMultilingualNeural" if eleven_match["gender"] == "Female" else "en-US-AndrewMultilingualNeural"
+            elif char_match:
+                target_voice = char_match.get("fallback_neural", "en-US-AvaMultilingualNeural")
             else:
                 target_voice = req.voice
-                pitch_val = req.pitch or "+0Hz"
 
-            # Pitch & Rate Sanitization
+            pitch_val = eff_pitch
             clean_pitch = str(pitch_val).strip()
             if clean_pitch.endswith("%"):
                 try:
@@ -2263,21 +2588,26 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
             if not clean_pitch.startswith("+") and not clean_pitch.startswith("-"):
                 clean_pitch = f"+{clean_pitch}"
 
-            clean_rate = req.rate or "+0%"
+            clean_rate = eff_rate
             if not clean_rate.endswith("%"):
                 clean_rate = f"{clean_rate}%"
             if not clean_rate.startswith("+") and not clean_rate.startswith("-"):
                 clean_rate = f"+{clean_rate}"
 
             communicate = edge_tts.Communicate(
-                text=clean_text,
+                text=spoken_text or clean_text,
                 voice=target_voice,
                 rate=clean_rate,
                 pitch=clean_pitch,
-                volume=req.volume or "+0%"
+                volume=eff_vol
             )
             await communicate.save(output_path)
-            engine_used = "Standard Neural (Fallback)" if is_fallback else "Edge Neural HD"
+            if char_match:
+                engine_used = "Character.ai Neural Expressive"
+            elif is_fallback:
+                engine_used = "Standard Neural (Fallback)"
+            else:
+                engine_used = "Edge Neural HD"
             generation_succeeded = True
 
         # Optional DSP Audio FX
@@ -2288,7 +2618,16 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
         audio_id = uuid.uuid4().hex[:12]
         conn = get_db_connection()
         c = conn.cursor()
-        voice_label = pro_match["name"] if pro_match else (cloned_match["name"] if cloned_match else req.voice)
+        if char_match:
+            voice_label = char_match["name"]
+        elif eleven_match:
+            voice_label = eleven_match["name"]
+        elif pro_match:
+            voice_label = pro_match["name"]
+        elif cloned_match:
+            voice_label = cloned_match["name"]
+        else:
+            voice_label = req.voice
         c.execute(
             """
             INSERT INTO generated_audio (id, user_id, filename, filepath, voice_name, engine_used, characters_count, tokens_charged)
@@ -2650,10 +2989,13 @@ def admin_resolve_ticket_direct(
 
 @app.get("/api/config")
 def get_config():
-    api_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
+    fish_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
+    eleven_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     return JSONResponse({
-        "engine_label": "Studio Neural HD Engine Ready",
-        "has_pro_engine": bool(api_key and len(api_key) > 10),
+        "engine_label": "Studio Multi-Engine Neural HD Ready",
+        "has_pro_engine": bool(fish_key and len(fish_key) > 10),
+        "has_eleven_engine": bool(eleven_key and len(eleven_key) > 10),
+        "has_character_ai": True,
         "google_client_id": GOOGLE_CLIENT_ID
     })
 
@@ -2687,11 +3029,19 @@ async def list_neural_voices():
         return JSONResponse({
             "count": len(curated),
             "voices": curated,
-            "human_pro_voices": CURATED_HUMAN_VOICES
+            "human_pro_voices": CURATED_HUMAN_VOICES,
+            "eleven_voices": CURATED_ELEVEN_VOICES,
+            "character_voices": CHARACTER_AI_VOICES
         })
     except Exception as e:
         logger.warning(f"Could not load voice models: {e}")
-        return JSONResponse({"count": 0, "voices": [], "human_pro_voices": CURATED_HUMAN_VOICES})
+        return JSONResponse({
+            "count": 0,
+            "voices": [],
+            "human_pro_voices": CURATED_HUMAN_VOICES,
+            "eleven_voices": CURATED_ELEVEN_VOICES,
+            "character_voices": CHARACTER_AI_VOICES
+        })
 
 # Mount Frontend static assets (Only public UI HTML/CSS/JS, NO audio folders)
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

@@ -1027,6 +1027,8 @@
       const t = document.getElementById('param-temp').value;
       const tp = document.getElementById('param-topp').value;
       const c = document.getElementById('param-chunk').value;
+      const styleEl = document.getElementById('param-style');
+      const s = styleEl ? styleEl.value : 45;
 
       document.getElementById('rate-label').textContent = `${(1.0 + (r / 100)).toFixed(2)}x (${r >= 0 ? '+' : ''}${r}%)`;
       document.getElementById('pitch-label').textContent = `${p >= 0 ? '+' : ''}${p}Hz`;
@@ -1034,6 +1036,8 @@
       document.getElementById('temp-label').textContent = (t / 100).toFixed(2);
       document.getElementById('topp-label').textContent = (tp / 100).toFixed(2);
       document.getElementById('chunk-label').textContent = `${c} chars`;
+      const styleLbl = document.getElementById('style-label');
+      if (styleLbl) styleLbl.textContent = `${s}%`;
     }
 
     function showToast(text, isError = false) {
@@ -1610,7 +1614,9 @@
             temperature: t,
             top_p: tp,
             chunk_length: c,
-            dsp_effect: state.currentFx
+            dsp_effect: state.currentFx,
+            emotion: state.currentEmotion || 'neutral',
+            style: (document.getElementById('param-style') ? parseFloat(document.getElementById('param-style').value) / 100 : 0.45)
           })
         });
 
