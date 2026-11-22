@@ -13,3 +13,5 @@ bcrypt>=4.1.0
 pyjwt>=2.8.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+libsql-client>=0.3.1
+

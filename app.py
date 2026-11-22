@@ -43,6 +43,10 @@ import numpy as np
 import soundfile as sf
 import edge_tts
 import httpx
+try:
+    import libsql_client
+except ImportError:
+    libsql_client = None
 import msgpack
 import speech_recognition as sr
 from dotenv import load_dotenv
@@ -241,9 +245,12 @@ def migrate_storage(source_root: str, target_root: str):
         raise RuntimeError(f"Storage migration failed writing completion marker: {e}")
 
 PERSISTENT_DATA_DIR = os.getenv("PERSISTENT_DATA_DIR", "").strip()
+if not PERSISTENT_DATA_DIR and os.path.exists("/var/data") and os.access("/var/data", os.W_OK):
+    PERSISTENT_DATA_DIR = "/var/data"
+    logger.info("Auto-detected writable persistent mount at /var/data.")
+
 if PERSISTENT_DATA_DIR:
     DATA_ROOT = os.path.abspath(PERSISTENT_DATA_DIR)
-    # Perform safe migration if source has existing data and target is distinct
     if os.path.exists(os.path.join(BASE_DIR, "voices", "studio.db")):
         migrate_storage(BASE_DIR, DATA_ROOT)
 else:
@@ -319,8 +326,145 @@ def check_rate_limit(key: str, max_requests: int, window_seconds: float):
         )
     timestamps.append(now)
 
+# Database Configuration & Turso Cloud Integration
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL", "").strip()
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "").strip()
+
+# Normalize Turso URL: libsql:// -> https:// for HTTP pipeline client
+_normalized_turso_url = TURSO_DATABASE_URL
+if _normalized_turso_url.startswith("libsql://"):
+    _normalized_turso_url = "https://" + _normalized_turso_url[9:]
+
+class TursoRowWrapper:
+    """Provides sqlite3.Row compatible interface (dict-like, index-accessible, iterable, dict(row) compatible)."""
+    __slots__ = ("_columns", "_values", "_map")
+
+    def __init__(self, columns: List[str], values: List[Any]):
+        self._columns = columns
+        self._values = values
+        self._map = {col: val for col, val in zip(columns, values)}
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, (int, slice)):
+            return self._values[key]
+        return self._map[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._map.get(key, default)
+
+    def keys(self):
+        return self._columns
+
+    def values(self):
+        return self._values
+
+    def items(self):
+        return self._map.items()
+
+    def __iter__(self):
+        return iter(self._columns)
+
+    def __len__(self):
+        return len(self._values)
+
+    def __repr__(self):
+        return f"TursoRow({self._map})"
+
+class TursoCursor:
+    def __init__(self, client: Any):
+        self.client = client
+        self.lastrowid: Optional[int] = None
+        self.rowcount: int = 0
+        self._rows: List[TursoRowWrapper] = []
+        self._cursor_idx: int = 0
+
+    def execute(self, sql: str, params: Any = None):
+        clean_sql = sql.strip().rstrip(";")
+        if clean_sql.upper().startswith("PRAGMA "):
+            self.lastrowid = None
+            self.rowcount = 0
+            self._rows = []
+            return self
+
+        args = []
+        if params is not None:
+            if isinstance(params, (list, tuple)):
+                args = list(params)
+            else:
+                args = [params]
+
+        upper_sql = clean_sql.upper()
+        needs_lastrowid = upper_sql.startswith("INSERT ") and "RETURNING" not in upper_sql
+
+        res = self.client.execute(clean_sql, args)
+        self.rowcount = res.rows_affected if res.rows_affected is not None else len(res.rows)
+        self.lastrowid = res.last_insert_rowid
+
+        if needs_lastrowid and self.lastrowid is None and self.rowcount > 0:
+            try:
+                rowid_res = self.client.execute("SELECT last_insert_rowid()")
+                if rowid_res.rows:
+                    self.lastrowid = int(rowid_res.rows[0][0])
+            except Exception:
+                pass
+
+        cols = list(res.columns)
+        self._rows = [TursoRowWrapper(cols, list(r._values if hasattr(r, '_values') else r)) for r in res.rows]
+        self._cursor_idx = 0
+        return self
+
+    def fetchone(self) -> Optional[TursoRowWrapper]:
+        if self._cursor_idx < len(self._rows):
+            row = self._rows[self._cursor_idx]
+            self._cursor_idx += 1
+            return row
+        return None
+
+    def fetchall(self) -> List[TursoRowWrapper]:
+        remaining = self._rows[self._cursor_idx:]
+        self._cursor_idx = len(self._rows)
+        return remaining
+
+    def close(self):
+        pass
+
+class TursoConnection:
+    def __init__(self, client: Any):
+        self.client = client
+
+    def cursor(self) -> TursoCursor:
+        return TursoCursor(self.client)
+
+    def execute(self, sql: str, params: Any = None) -> TursoCursor:
+        cur = self.cursor()
+        return cur.execute(sql, params)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+_TURSO_CLIENT = None
+if _normalized_turso_url and TURSO_AUTH_TOKEN and libsql_client is not None:
+    try:
+        _TURSO_CLIENT = libsql_client.create_client_sync(
+            url=_normalized_turso_url,
+            auth_token=TURSO_AUTH_TOKEN
+        )
+        logger.info(f"Connected to Turso Cloud SQLite database at {_normalized_turso_url}")
+    except Exception as e:
+        logger.error(f"Failed to connect to Turso cloud database: {e}. Falling back to local SQLite.")
+        _TURSO_CLIENT = None
+
 # Database Helpers
-def get_db_connection() -> sqlite3.Connection:
+def get_db_connection() -> Any:
+    if _TURSO_CLIENT is not None:
+        return TursoConnection(_TURSO_CLIENT)
+
     conn = sqlite3.connect(DB_FILE, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -381,7 +525,23 @@ async def periodic_backup_task():
             logger.warning(f"Periodic backup task encountered an error: {e}")
 
 def init_db():
-    """Initializes schema and upgrades legacy structures if necessary."""
+    """Initializes schema, recovers from snapshots if needed, and upgrades legacy structures."""
+    # If running local SQLite and DB is missing/empty, restore from newest backup if available
+    if _TURSO_CLIENT is None:
+        try:
+            if not os.path.exists(DB_FILE) or os.path.getsize(DB_FILE) == 0:
+                if os.path.exists(BACKUPS_DIR):
+                    snapshots = sorted([
+                        os.path.join(BACKUPS_DIR, f) for f in os.listdir(BACKUPS_DIR)
+                        if f.startswith("studio_backup_") and f.endswith(".db") and os.path.getsize(os.path.join(BACKUPS_DIR, f)) > 0
+                    ], key=os.path.getmtime)
+                    if snapshots:
+                        latest_snapshot = snapshots[-1]
+                        shutil.copy2(latest_snapshot, DB_FILE)
+                        logger.info(f"Automatically restored database from latest backup snapshot: {latest_snapshot}")
+        except Exception as e:
+            logger.warning(f"Auto-recovery from snapshot encountered an issue: {e}")
+
     conn = get_db_connection()
     c = conn.cursor()
     
@@ -485,7 +645,7 @@ def init_db():
     ''')
     try:
         c.execute("ALTER TABLE support_tickets ADD COLUMN idempotency_key TEXT")
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     c.execute("CREATE INDEX IF NOT EXISTS idx_support_tickets_idempotency ON support_tickets (idempotency_key)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_support_tickets_user_created ON support_tickets (user_id, created_at)")
@@ -3017,10 +3177,15 @@ def admin_delete_user(
         if afp:
             safe_remove_managed_file(afp, allowed_dirs=[OUTPUTS_DIR])
 
-    c.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (target_user_id,))
+    # Soft deletion: update status to 'deleted', deactivate credentials, preserve data integrity
+    del_ts = int(time.time())
+    c.execute(
+        "UPDATE users SET status = 'deleted', username = 'deleted_' || id || '_' || ?, email = 'deleted_' || id || '_' || ? WHERE id = ? AND role != 'admin'",
+        (del_ts, del_ts, target_user_id)
+    )
     conn.commit()
     conn.close()
-    return JSONResponse({"success": True, "message": "User account and associated audio deleted."})
+    return JSONResponse({"success": True, "message": "User account deactivated and audio records removed."})
 
 @app.get("/api/admin/smtp-health")
 def admin_smtp_health_check(admin_user: Dict[str, Any] = Depends(require_admin)):
@@ -3138,7 +3303,10 @@ def get_config():
         "has_pro_engine": bool(fish_key and len(fish_key) > 10),
         "has_eleven_engine": bool(eleven_key and len(eleven_key) > 10),
         "has_character_ai": True,
-        "google_client_id": GOOGLE_CLIENT_ID
+        "google_client_id": GOOGLE_CLIENT_ID,
+        "database_backend": "Turso Cloud SQLite" if _TURSO_CLIENT is not None else "Local SQLite",
+        "is_cloud_database": bool(_TURSO_CLIENT is not None),
+        "is_persistent_storage": bool(_TURSO_CLIENT is not None or (PERSISTENT_DATA_DIR and os.path.exists(PERSISTENT_DATA_DIR)))
     })
 
 @app.get("/api/models")
