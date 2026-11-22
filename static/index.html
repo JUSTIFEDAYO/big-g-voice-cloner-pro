@@ -18,7 +18,135 @@
       --text-sub: #64748b;
       --success: #10b981;
       --danger: #ef4444;
+      --input-bg: #0b0f19;
+      --input-border: #28354d;
+      --box-hover-bg: #0f1624;
+      --header-bg: rgba(16, 22, 36, 0.95);
+      --badge-bg: #162032;
     }
+
+    body.light-theme {
+      --bg-dark: #f1f5f9;
+      --card-bg: #ffffff;
+      --card-border: #cbd5e1;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-sub: #64748b;
+      --input-bg: #f8fafc;
+      --input-border: #cbd5e1;
+      --box-hover-bg: #f1f5f9;
+      --header-bg: rgba(255, 255, 255, 0.95);
+      --badge-bg: #e2e8f0;
+    }
+
+    body.light-theme .auth-card {
+      background: #ffffff;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+
+    body.light-theme .auth-bg {
+      background: radial-gradient(circle at 50% 20%, #e2e8f0 0%, #cbd5e1 100%);
+    }
+
+    body.light-theme .voice-item {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #0f172a;
+    }
+
+    body.light-theme .voice-item:hover {
+      background: #e2e8f0;
+    }
+
+    body.light-theme textarea,
+    body.light-theme .voice-search {
+      background: var(--input-bg);
+      border-color: var(--input-border);
+      color: var(--text-main);
+    }
+
+    body.light-theme .control-group {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
+
+    body.light-theme .clone-box {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: var(--text-main);
+    }
+
+    body.light-theme .output-card {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    body.light-theme .dialogue-bubble {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
+
+    body.light-theme .pill-btn {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+      color: #334155;
+    }
+
+    body.light-theme .pill-btn:hover {
+      color: #0f172a;
+      border-color: var(--accent-blue);
+    }
+
+    body.light-theme .fx-chip {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+
+    body.light-theme .v-filter-btn {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+
+    body.light-theme .tab-btn {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+
+    body.light-theme .tab-btn.active {
+      background: #ffffff;
+      color: #0f172a;
+    }
+
+    .theme-toggle-btn {
+      background: var(--badge-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle-btn:hover {
+      border-color: var(--accent-blue);
+      transform: translateY(-1px);
+    }
+
+    .record-box-active {
+      border-color: #ef4444 !important;
+      background: rgba(239, 68, 68, 0.08) !important;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+    }
+
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -33,7 +161,7 @@
 
     /* Header Nav */
     header {
-      background: rgba(16, 22, 36, 0.95);
+      background: var(--header-bg);
       border-bottom: 1px solid var(--card-border);
       padding: 14px 28px;
       display: flex;
@@ -314,6 +442,9 @@
         <span>👤 <strong id="header-username" style="color: #fff;">User</strong></span>
         <span id="header-role-badge" class="badge-free" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border-color: #3b82f6;">USER</span>
       </div>
+      <button type="button" id="btn-theme-toggle" onclick="toggleTheme()" class="theme-toggle-btn" title="Toggle Dark/Light Mode">
+        <span id="theme-icon">🌙</span> <span id="theme-text">Dark</span>
+      </button>
       <button onclick="logout()" class="pill-btn" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">
         🔒 Sign Out
       </button>
@@ -324,6 +455,11 @@
   <div id="auth-portal" class="auth-bg">
     <div class="auth-card">
       <div style="text-align: center;">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: -15px;">
+          <button type="button" onclick="toggleTheme()" class="theme-toggle-btn" style="padding: 4px 8px; font-size: 0.75rem;">
+            <span class="auth-theme-icon">🌙</span>
+          </button>
+        </div>
         <div class="brand-logo" style="margin: 0 auto 12px; width: 48px; height: 48px; font-size: 22px;">🎙️</div>
         <h2 style="font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; color: #fff;">BIG G'S VOICE CLONER PRO</h2>
         <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 4px;">Studio Audio Intelligence & Synthesis</p>
@@ -677,11 +813,39 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 14px;">
-          <div class="clone-box" onclick="document.getElementById('clone-file').click()">
-            <div style="font-size: 2.2rem; margin-bottom: 8px;">🎙️</div>
+          <!-- Dual Input Choice: Upload or Record -->
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="tab-choose-upload" onclick="switchCloneInput('upload')" class="pill-btn" style="flex: 1; padding: 8px; font-weight: 700; background: var(--accent-blue); color: #fff; border-color: var(--accent-blue);">
+              📁 Upload Audio File
+            </button>
+            <button type="button" id="tab-choose-record" onclick="switchCloneInput('record')" class="pill-btn" style="flex: 1; padding: 8px; font-weight: 700;">
+              🎙️ Record Live Voice
+            </button>
+          </div>
+
+          <!-- Section A: File Upload -->
+          <div id="section-clone-upload" class="clone-box" onclick="document.getElementById('clone-file').click()">
+            <div style="font-size: 2.2rem; margin-bottom: 8px;">📁</div>
             <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 4px;" id="file-title">Click to upload voice audio sample</div>
-            <div style="font-size: 0.78rem; color: var(--text-sub);">WAV, MP3, M4A (Clear 5 - 20s clip without music)</div>
+            <div style="font-size: 0.78rem; color: var(--text-sub);">WAV, MP3, M4A, WEBM, FLAC (Clear 5 - 20s clip without music)</div>
             <input type="file" id="clone-file" class="file-input" accept="audio/*" onchange="onSampleSelected(event)">
+          </div>
+
+          <!-- Section B: Live Microphone Recording -->
+          <div id="section-clone-record" class="clone-box hidden" style="cursor: default;">
+            <div id="record-mic-icon" style="font-size: 2.2rem; margin-bottom: 8px;">🎙️</div>
+            <div id="record-status-title" style="font-weight: 700; font-size: 0.95rem; margin-bottom: 4px;">Ready to Record Your Voice</div>
+            <div id="record-timer" style="font-size: 1.1rem; font-weight: 800; color: #ef4444; margin-bottom: 10px;" class="hidden">00:00</div>
+            <div style="font-size: 0.78rem; color: var(--text-sub); margin-bottom: 14px;">Speak clearly into your microphone for 5 to 20 seconds.</div>
+            
+            <div style="display: flex; justify-content: center; gap: 10px;">
+              <button type="button" id="btn-start-record" onclick="startVoiceRecording()" class="pill-btn" style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #f87171; font-weight: 700; padding: 8px 16px;">
+                🔴 Start Recording
+              </button>
+              <button type="button" id="btn-stop-record" onclick="stopVoiceRecording()" class="pill-btn hidden" style="background: #ef4444; border-color: #ef4444; color: #fff; font-weight: 700; padding: 8px 16px;">
+                ⏹️ Stop & Save Clip
+              </button>
+            </div>
           </div>
           
           <audio id="sample-preview-audio" class="audio-player hidden" controls></audio>
@@ -2177,6 +2341,159 @@
       }
     }
 
+    
+    // ==========================================
+    // THEME MANAGEMENT (DARK / LIGHT MODE)
+    // ==========================================
+    function initTheme() {
+      const savedTheme = localStorage.getItem('vg_theme') || 'dark';
+      applyTheme(savedTheme);
+    }
+
+    function toggleTheme() {
+      const isLight = document.body.classList.contains('light-theme');
+      const targetTheme = isLight ? 'dark' : 'light';
+      applyTheme(targetTheme);
+      localStorage.setItem('vg_theme', targetTheme);
+    }
+
+    function applyTheme(theme) {
+      const isLight = theme === 'light';
+      if (isLight) {
+        document.body.classList.add('light-theme');
+      } else {
+        document.body.classList.remove('light-theme');
+      }
+
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+      if (icon && text) {
+        icon.textContent = isLight ? '☀️' : '🌙';
+        text.textContent = isLight ? 'Light' : 'Dark';
+      }
+      const authIcons = document.querySelectorAll('.auth-theme-icon');
+      authIcons.forEach(ai => ai.textContent = isLight ? '☀️' : '🌙');
+    }
+
+    // ==========================================
+    // LIVE AUDIO RECORDING
+    // ==========================================
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordTimerInterval = null;
+    let recordSeconds = 0;
+
+    function switchCloneInput(mode) {
+      const secUpload = document.getElementById('section-clone-upload');
+      const secRecord = document.getElementById('section-clone-record');
+      const tabUpload = document.getElementById('tab-choose-upload');
+      const tabRecord = document.getElementById('tab-choose-record');
+
+      if (mode === 'upload') {
+        secUpload.classList.remove('hidden');
+        secRecord.classList.add('hidden');
+        tabUpload.style.background = 'var(--accent-blue)';
+        tabUpload.style.color = '#fff';
+        tabUpload.style.borderColor = 'var(--accent-blue)';
+        tabRecord.style.background = '';
+        tabRecord.style.color = '';
+        tabRecord.style.borderColor = '';
+      } else {
+        secUpload.classList.add('hidden');
+        secRecord.classList.remove('hidden');
+        tabRecord.style.background = 'var(--accent-blue)';
+        tabRecord.style.color = '#fff';
+        tabRecord.style.borderColor = 'var(--accent-blue)';
+        tabUpload.style.background = '';
+        tabUpload.style.color = '';
+        tabUpload.style.borderColor = '';
+      }
+    }
+
+    async function startVoiceRecording() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return showToast('Microphone recording is not supported on this browser or connection.', true);
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedChunks = [];
+        
+        let mimeType = 'audio/webm';
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          mimeType = 'audio/ogg;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        }
+
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunks.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach(track => track.stop());
+          clearInterval(recordTimerInterval);
+
+          const blob = new Blob(recordedChunks, { type: mimeType });
+          const fileExtension = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('ogg') ? 'ogg' : 'webm');
+          const recordedFile = new File([blob], `recorded_voice_${Date.now()}.${fileExtension}`, { type: mimeType });
+
+          state.selectedSampleFile = recordedFile;
+          
+          const player = document.getElementById('sample-preview-audio');
+          player.src = URL.createObjectURL(blob);
+          player.classList.remove('hidden');
+
+          document.getElementById('record-status-title').textContent = `Recorded: ${recordSeconds}s Audio Captured!`;
+          document.getElementById('record-mic-icon').textContent = '✅';
+          document.getElementById('section-clone-record').classList.remove('record-box-active');
+          document.getElementById('file-title').textContent = `Live Recording: ${recordedFile.name}`;
+          
+          showToast(`Recorded ${recordSeconds}s of audio sample successfully!`);
+        };
+
+        mediaRecorder.start(250);
+        recordSeconds = 0;
+        const timerEl = document.getElementById('record-timer');
+        timerEl.textContent = '00:00';
+        timerEl.classList.remove('hidden');
+
+        document.getElementById('btn-start-record').classList.add('hidden');
+        document.getElementById('btn-stop-record').classList.remove('hidden');
+        document.getElementById('record-status-title').textContent = 'Recording in progress... Speak clearly';
+        document.getElementById('record-mic-icon').textContent = '🔴';
+        document.getElementById('section-clone-record').classList.add('record-box-active');
+
+        recordTimerInterval = setInterval(() => {
+          recordSeconds++;
+          const mins = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
+          const secs = String(recordSeconds % 60).padStart(2, '0');
+          timerEl.textContent = `${mins}:${secs}`;
+          if (recordSeconds >= 60) {
+            stopVoiceRecording();
+          }
+        }, 1000);
+
+      } catch (err) {
+        showToast('Microphone access denied: ' + err.message, true);
+      }
+    }
+
+    function stopVoiceRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      document.getElementById('btn-stop-record').classList.add('hidden');
+      document.getElementById('btn-start-record').classList.remove('hidden');
+      document.getElementById('btn-start-record').textContent = '🔄 Re-Record Voice';
+    }
+
+    initTheme();
     window.addEventListener('DOMContentLoaded', checkAuth);
   window.addEventListener('load', () => { setTimeout(renderGoogleButtons, 500); });
   </script>

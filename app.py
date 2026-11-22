@@ -1129,7 +1129,7 @@ def process_emotion_text_and_prosody(text: str, emotion: Optional[str] = "neutra
 
 
 # Audio Constants & Helpers
-ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm", ".aac"}
 MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
 async def read_bounded_upload(upload_file: UploadFile, max_bytes: int = MAX_AUDIO_UPLOAD_BYTES, chunk_size: int = 64 * 1024) -> bytes:
@@ -2320,7 +2320,7 @@ def get_user_tickets(current_user: Dict[str, Any] = Depends(get_current_user)):
 # PRIORITY 3: Audio Privacy, Storage & Ownership Endpoints
 # -------------------------------------------------------------
 
-ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm", ".aac"}
 MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
 @app.post("/api/clone")
@@ -2516,7 +2516,9 @@ def stream_private_audio(filename: str, current_user: Dict[str, Any] = Depends(g
         ".wav": "audio/wav",
         ".m4a": "audio/mp4",
         ".ogg": "audio/ogg",
-        ".flac": "audio/flac"
+        ".flac": "audio/flac",
+        ".webm": "audio/webm",
+        ".aac": "audio/aac"
     }
     return FileResponse(found_path, media_type=media_types.get(ext, "application/octet-stream"))
 
@@ -2641,7 +2643,7 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
                     "chunk_length": int(np.clip(req.chunk_length or 200, 100, 300))
                 }
                 headers = {
-                    "Authorization": f"Bearer {api_key}",
+                    "Authorization": f"Bearer {fish_api_key}",
                     "Content-Type": "application/json",
                     "model": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
                 }
@@ -2656,7 +2658,7 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
                 logger.warning(f"Pro Voice synthesis failed, falling back to neural: {e}")
 
         # 2. Cloned User Voice via Zero-Shot Audio Conditioning
-        elif cloned_match and api_key and (req.engine in ["auto", "fish_audio"]):
+        elif cloned_match and fish_api_key and (req.engine in ["auto", "fish_audio"]):
             ref_path = cloned_match["file_path"]
             if os.path.exists(ref_path):
                 try:
@@ -2675,7 +2677,7 @@ async def generate_speech(req: TTSRequest, current_user: Dict[str, Any] = Depend
                         "chunk_length": int(np.clip(req.chunk_length or 200, 100, 300))
                     }
                     headers = {
-                        "Authorization": f"Bearer {api_key}",
+                        "Authorization": f"Bearer {fish_api_key}",
                         "Content-Type": "application/msgpack",
                         "model": os.getenv("FISH_AUDIO_MODEL", "s2.1-pro-free")
                     }
