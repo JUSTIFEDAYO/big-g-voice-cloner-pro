@@ -208,6 +208,20 @@
       background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);
       font-size: 0.65rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; text-transform: uppercase;
     }
+    .badge-char {
+      background: rgba(236, 72, 153, 0.25); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.5);
+      font-size: 0.65rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-eleven {
+      background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.5);
+      font-size: 0.65rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; text-transform: uppercase;
+    }
+    .emotion-pill-btn {
+      background: #111827; border: 1px solid #1f293d; color: var(--text-muted);
+      font-size: 0.72rem; padding: 4px 10px; border-radius: 20px; cursor: pointer; font-weight: 600; transition: all 0.2s;
+    }
+    .emotion-pill-btn:hover { border-color: var(--accent-blue); color: #fff; }
+    .emotion-pill-btn.active { background: #3b82f6; border-color: #3b82f6; color: #fff; box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
 
     .dialogue-bubble {
       background: #0e1422; border: 1px solid #1d273a; border-radius: 10px;
@@ -588,8 +602,11 @@
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <input type="text" id="voice-search" class="voice-search" placeholder="Search voices, USA, UK, accents..." oninput="filterVoices()">
           
-          <div class="voice-filter-tabs">
+          <div class="voice-filter-tabs" style="display: flex; gap: 4px; flex-wrap: wrap;">
             <button class="v-filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+            <button class="v-filter-btn" id="filter-char" onclick="setFilter('char')" style="border-color: rgba(236,72,153,0.5); color: #f472b6;">🎭 Character AI</button>
+            <button class="v-filter-btn" id="filter-eleven" onclick="setFilter('eleven')" style="border-color: rgba(14,165,233,0.5); color: #38bdf8;">⚡ ElevenLabs</button>
+            <button class="v-filter-btn" id="filter-pro" onclick="setFilter('pro')">🎙️ Pro HD</button>
             <button class="v-filter-btn" id="filter-usa" onclick="setFilter('usa')">🇺🇸 USA</button>
             <button class="v-filter-btn" id="filter-uk" onclick="setFilter('uk')">🇬🇧 UK</button>
             <button class="v-filter-btn" id="filter-cloned" onclick="setFilter('cloned')">🧬 Clones (<span id="cloned-badge">0</span>)</button>
@@ -923,9 +940,12 @@
 
   <script>
     const state = {
+      characterVoices: [],
+      elevenVoices: [],
       humanProVoices: [],
       allVoices: [],
       clonedVoices: [],
+      currentEmotion: 'neutral',
       currentVoice: 'fish_7c0a85bc08f3454c9e29dba716eef0ab',
       currentVoiceName: 'Marcus - Deep American Documentary',
       voiceFilter: 'all',
@@ -1489,6 +1509,8 @@
         const vData = await vRes.json();
         state.allVoices = vData.voices || [];
         state.humanProVoices = vData.human_pro_voices || [];
+        state.elevenVoices = vData.eleven_voices || [];
+        state.characterVoices = vData.character_voices || [];
         state.clonedVoices = await cRes.json();
         document.getElementById('cloned-badge').textContent = state.clonedVoices.length;
 
@@ -1524,28 +1546,40 @@
       const search = (document.getElementById('voice-search').value || '').toLowerCase();
       let list = [];
 
-      const humanMapped = state.humanProVoices.map(h => ({ ...h, isHumanPro: true }));
-      const clonedMapped = state.clonedVoices.map(c => ({ id: c.id, name: c.name + ' (Cloned)', desc: c.description, isCloned: true }));
-      const neuralMapped = state.allVoices.map(v => ({ id: v.id, name: v.name, desc: `${v.locale} • ${v.gender}`, isCloned: false, locale: v.locale }));
+      const charMapped = (state.characterVoices || []).map(c => ({ ...c, isChar: true, badge: 'CHARACTER' }));
+      const elevenMapped = (state.elevenVoices || []).map(e => ({ ...e, isEleven: true, badge: 'ELEVEN' }));
+      const humanMapped = (state.humanProVoices || []).map(h => ({ ...h, isHumanPro: true, badge: 'PRO' }));
+      const clonedMapped = (state.clonedVoices || []).map(c => ({ id: c.id, name: c.name + ' (Cloned)', desc: c.description, isCloned: true, badge: 'CLONE' }));
+      const neuralMapped = (state.allVoices || []).map(v => ({ id: v.id, name: v.name, desc: `${v.locale} • ${v.gender}`, isCloned: false, locale: v.locale, badge: '' }));
 
-      if (state.voiceFilter === 'usa') {
+      if (state.voiceFilter === 'char') {
+        list = charMapped;
+      } else if (state.voiceFilter === 'eleven') {
+        list = elevenMapped;
+      } else if (state.voiceFilter === 'pro') {
+        list = humanMapped;
+      } else if (state.voiceFilter === 'usa') {
         list = [
+          ...charMapped.filter(c => c.locale === 'en-US'),
+          ...elevenMapped.filter(e => e.locale === 'en-US'),
           ...humanMapped.filter(h => h.locale === 'en-US'),
           ...neuralMapped.filter(n => n.locale === 'en-US')
         ];
       } else if (state.voiceFilter === 'uk') {
         list = [
+          ...charMapped.filter(c => c.locale === 'en-GB'),
+          ...elevenMapped.filter(e => e.locale === 'en-GB'),
           ...humanMapped.filter(h => h.locale === 'en-GB'),
           ...neuralMapped.filter(n => n.locale === 'en-GB')
         ];
       } else if (state.voiceFilter === 'cloned') {
         list = clonedMapped;
       } else {
-        list = [...humanMapped, ...clonedMapped, ...neuralMapped];
+        list = [...charMapped, ...elevenMapped, ...humanMapped, ...clonedMapped, ...neuralMapped];
       }
 
       if (search) {
-        list = list.filter(v => (v.name || '').toLowerCase().includes(search) || (v.desc || v.description || '').toLowerCase().includes(search));
+        list = list.filter(v => (v.name || '').toLowerCase().includes(search) || (v.desc || v.description || '').toLowerCase().includes(search) || (v.category || '').toLowerCase().includes(search));
       }
 
       if (list.length === 0) {
@@ -1553,18 +1587,24 @@
         return;
       }
 
-      listEl.innerHTML = list.slice(0, 60).map(v => {
+      listEl.innerHTML = list.slice(0, 80).map(v => {
         const isSel = v.id === state.currentVoice;
         const icon = v.avatar || (v.isCloned ? '🧬' : (v.locale === 'en-GB' ? '🇬🇧' : '🇺🇸'));
         const descText = v.description || v.desc || '';
+        let badgeHtml = '';
+        if (v.isChar) badgeHtml = '<span class="badge-char">CHARACTER</span>';
+        else if (v.isEleven) badgeHtml = '<span class="badge-eleven">ELEVEN</span>';
+        else if (v.isHumanPro) badgeHtml = '<span class="badge-pro">PRO</span>';
+        else if (v.isCloned) badgeHtml = '<span class="badge-pro" style="color:#a78bfa; border-color:#8b5cf6;">CLONE</span>';
+
         return `
-          <div class="voice-item ${isSel ? 'selected' : ''}" onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")}', '${descText.replace(/'/g, "\\'")}', '${icon}')">
+          <div class="voice-item ${isSel ? 'selected' : ''}" onclick="selectVoice('${v.id}', '${v.name.replace(/'/g, "\\'")}', '${descText.replace(/'/g, "\\'")}', '${icon}', '${v.default_emotion || ''}')">
             <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-              <span style="font-size: 1.2rem;">${icon}</span>
+              <span style="font-size: 1.25rem;">${icon}</span>
               <div style="overflow: hidden;">
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${v.name}</span>
-                  ${v.isHumanPro ? '<span class="badge-pro">PRO</span>' : ''}
+                  ${badgeHtml}
                 </div>
                 <div style="font-size: 0.72rem; color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${descText}</div>
               </div>
