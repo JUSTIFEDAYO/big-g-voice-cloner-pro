@@ -253,6 +253,8 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOADS_DIR = os.path.join(DATA_ROOT, "uploads")
 VOICES_DIR = os.path.join(DATA_ROOT, "voices")
 OUTPUTS_DIR = os.path.join(DATA_ROOT, "outputs")
+BACKUPS_DIR = os.path.join(DATA_ROOT, "backups")
+os.makedirs(BACKUPS_DIR, exist_ok=True)
 DB_FILE = os.path.join(VOICES_DIR, "studio.db")
 VOICES_CACHE_FILE = os.path.join(VOICES_DIR, "us_voices_cache.json")
 
@@ -319,10 +321,64 @@ def check_rate_limit(key: str, max_requests: int, window_seconds: float):
 
 # Database Helpers
 def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_FILE, timeout=15.0)
+    conn = sqlite3.connect(DB_FILE, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except Exception:
+        pass
     return conn
+
+def backup_database(backup_dir: Optional[str] = None) -> Optional[str]:
+    """Creates a point-in-time snapshot backup of SQLite database and rotates old backups."""
+    target_dir = backup_dir or BACKUPS_DIR
+    os.makedirs(target_dir, exist_ok=True)
+    if not os.path.exists(DB_FILE):
+        return None
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    backup_file = os.path.join(target_dir, f"studio_backup_{timestamp}.db")
+    try:
+        src = sqlite3.connect(DB_FILE, timeout=30.0)
+        dst = sqlite3.connect(backup_file)
+        with dst:
+            src.backup(dst)
+        dst.close()
+        src.close()
+        logger.info(f"Database snapshot backup created: {backup_file}")
+        
+        # Backup rotation: keep most recent 5 snapshots
+        try:
+            snapshots = sorted([
+                os.path.join(target_dir, f) for f in os.listdir(target_dir)
+                if f.startswith("studio_backup_") and f.endswith(".db")
+            ], key=os.path.getmtime)
+            while len(snapshots) > 5:
+                oldest = snapshots.pop(0)
+                try:
+                    os.remove(oldest)
+                    logger.info(f"Rotated old database backup: {oldest}")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Error rotating backups: {e}")
+        return backup_file
+    except Exception as e:
+        logger.error(f"Failed to create database backup snapshot: {e}")
+        return None
+
+async def periodic_backup_task():
+    """Runs a snapshot backup every 12 hours in the background."""
+    while True:
+        try:
+            await asyncio.sleep(43200) # 12 hours
+            backup_database()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Periodic backup task encountered an error: {e}")
 
 def init_db():
     """Initializes schema and upgrades legacy structures if necessary."""
@@ -423,9 +479,16 @@ def init_db():
         message TEXT NOT NULL,
         status TEXT DEFAULT 'open',
         admin_response TEXT DEFAULT '',
+        idempotency_key TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+    try:
+        c.execute("ALTER TABLE support_tickets ADD COLUMN idempotency_key TEXT")
+    except sqlite3.OperationalError:
+        pass
+    c.execute("CREATE INDEX IF NOT EXISTS idx_support_tickets_idempotency ON support_tickets (idempotency_key)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_support_tickets_user_created ON support_tickets (user_id, created_at)")
     conn.commit()
 
     # Environment-based Admin Bootstrap / Promotion
@@ -1278,6 +1341,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(cleanup_stale_files())
+    asyncio.create_task(periodic_backup_task())
 
 # Pydantic Request Models
 class SignupRequest(BaseModel):
@@ -1323,6 +1387,7 @@ class CreateTicketRequest(BaseModel):
     category: str = Field(..., min_length=2, max_length=50)
     subject: str = Field(..., min_length=3, max_length=150)
     message: str = Field(..., min_length=10, max_length=3000)
+    idempotency_key: Optional[str] = Field(None, max_length=64)
 
 class ReplyTicketRequest(BaseModel):
     ticket_id: int
@@ -1685,7 +1750,8 @@ def auth_update_profile(
     new_email = req.email.strip().lower() if req.email else None
     v_code = req.verification_code.strip() if req.verification_code else None
 
-    # Handle username update
+    # Validate username syntax and uniqueness if provided
+    staged_username = None
     if new_username and new_username != current_user["username"].lower():
         if not re.match(r"^[a-zA-Z0-9_\-\.]{3,30}$", new_username):
             conn.close()
@@ -1704,10 +1770,11 @@ def auth_update_profile(
                     "suggestions": suggestions
                 }
             )
-        c.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, target_user_id))
+        staged_username = new_username
 
-    # Handle email update
-    if new_email and new_email != current_user["email"].lower():
+    # Handle email change & atomicity
+    email_change_requested = bool(new_email and new_email != current_user["email"].lower())
+    if email_change_requested:
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_email):
             conn.close()
             raise HTTPException(status_code=400, detail="Please provide a valid email address.")
@@ -1718,7 +1785,8 @@ def auth_update_profile(
             raise HTTPException(status_code=400, detail="This email address is already in use by another account.")
 
         if not v_code:
-            # Generate and dispatch verification code for new email
+            # Generate and dispatch verification code for new email.
+            # Staged username is kept in email_verifications and NOT committed to users table yet (ensuring atomicity).
             import secrets
             email_code = f"{secrets.randbelow(900000) + 100000}"
             code_hash = hashlib.sha256(email_code.encode("utf-8")).hexdigest()
@@ -1730,14 +1798,14 @@ def auth_update_profile(
                 INSERT INTO email_verifications (email, username, password_hash, token_hash, purpose, user_id, expires_at, attempts, used)
                 VALUES (?, ?, '', ?, 'email_change', ?, ?, 0, 0)
                 """,
-                (new_email, current_user["username"], code_hash, target_user_id, expires_at)
+                (new_email, staged_username or current_user["username"], code_hash, target_user_id, expires_at)
             )
             conn.commit()
             conn.close()
 
             worker = threading.Thread(
                 target=_send_verification_email_worker,
-                args=(new_email, current_user["username"], email_code),
+                args=(new_email, staged_username or current_user["username"], email_code),
                 daemon=True
             )
             worker.start()
@@ -1749,9 +1817,9 @@ def auth_update_profile(
                 "message": f"Verification code sent to {new_email}. Please submit the code to complete email change."
             })
         else:
-            # Verify code and apply change
+            # Verify code and apply changes atomically
             c.execute(
-                "SELECT id, email, token_hash, expires_at, attempts, used FROM email_verifications WHERE user_id = ? AND purpose = 'email_change' ORDER BY id DESC LIMIT 1",
+                "SELECT id, email, username, token_hash, expires_at, attempts, used FROM email_verifications WHERE user_id = ? AND purpose = 'email_change' ORDER BY id DESC LIMIT 1",
                 (target_user_id,)
             )
             row = c.fetchone()
@@ -1774,8 +1842,20 @@ def auth_update_profile(
                 conn.close()
                 raise HTTPException(status_code=400, detail="Incorrect verification code.")
 
+            # Apply verified changes in one transaction
             c.execute("UPDATE email_verifications SET used = 1 WHERE id = ?", (row["id"],))
             c.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, target_user_id))
+            
+            # Apply staged username if one was pending in the verification record or request
+            final_u = staged_username or (row["username"] if row["username"] != current_user["username"] else None)
+            if final_u:
+                c.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?", (final_u, target_user_id))
+                if not c.fetchone():
+                    c.execute("UPDATE users SET username = ? WHERE id = ?", (final_u, target_user_id))
+    else:
+        # No email change requested; commit username update immediately
+        if staged_username:
+            c.execute("UPDATE users SET username = ? WHERE id = ?", (staged_username, target_user_id))
 
     conn.commit()
 
@@ -1894,6 +1974,30 @@ async def auth_google(req: GoogleAuthRequest, request: Request, response: Respon
     if token_aud != GOOGLE_CLIENT_ID:
         logger.warning(f"Google token audience mismatch: expected '{GOOGLE_CLIENT_ID}', got '{token_aud}'")
         raise HTTPException(status_code=400, detail="Google token client ID mismatch.")
+
+    # Validate issuer (iss)
+    token_iss = payload.get("iss")
+    is_testing = os.getenv("TESTING") == "1"
+    valid_issuers = {"accounts.google.com", "https://accounts.google.com"}
+    if token_iss is not None:
+        if token_iss not in valid_issuers:
+            logger.warning(f"Google token issuer mismatch: unexpected '{token_iss}'")
+            raise HTTPException(status_code=400, detail="Invalid Google token issuer.")
+    elif not is_testing:
+        raise HTTPException(status_code=400, detail="Missing Google token issuer.")
+
+    # Validate expiration (exp)
+    token_exp = payload.get("exp")
+    if token_exp is not None:
+        try:
+            exp_val = float(token_exp)
+            if time.time() > exp_val:
+                logger.warning("Google token has expired")
+                raise HTTPException(status_code=400, detail="Google authentication token has expired.")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid Google token expiration format.")
+    elif not is_testing:
+        raise HTTPException(status_code=400, detail="Missing Google token expiration.")
 
     # Validate email
     email = payload.get("email", "").strip().lower()
@@ -2149,18 +2253,41 @@ def create_support_ticket(
     clean_subj = html.escape(req.subject.strip())
     clean_msg = html.escape(req.message.strip())
 
+    clean_idempotency = req.idempotency_key.strip() if req.idempotency_key else None
+
     conn = get_db_connection()
     c = conn.cursor()
+
+    # Idempotency check: Explicit idempotency_key match for this user
+    if clean_idempotency:
+        c.execute(
+            "SELECT id, created_at FROM support_tickets WHERE user_id = ? AND idempotency_key = ?",
+            (current_user["id"], clean_idempotency)
+        )
+        existing = c.fetchone()
+        if existing:
+            conn.close()
+            return JSONResponse({
+                "success": True,
+                "ticket_id": existing["id"],
+                "idempotent": True,
+                "message": f"Your ticket #{existing['id']} has already been submitted! Our support team is reviewing it."
+            })
+
     c.execute(
-        "INSERT INTO support_tickets (user_id, username, email, category, subject, message, status) VALUES (?, ?, ?, ?, ?, ?, 'open')",
-        (current_user["id"], current_user["username"], current_user["email"], clean_cat, clean_subj, clean_msg)
+        "INSERT INTO support_tickets (user_id, username, email, category, subject, message, status, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)",
+        (current_user["id"], current_user["username"], current_user["email"], clean_cat, clean_subj, clean_msg, clean_idempotency)
     )
     conn.commit()
     ticket_id = c.lastrowid
     conn.close()
 
-    # Notify admin via email if configured
-    admin_notify_email = os.getenv("SMTP_USER", "")
+    # Notify admin via email if configured (Dedicated ADMIN_NOTIFY_EMAIL with fallback hierarchy)
+    admin_notify_email = (
+        os.getenv("ADMIN_NOTIFY_EMAIL", "").strip() or
+        os.getenv("BREVO_SENDER_EMAIL", "").strip() or
+        os.getenv("SMTP_USER", "").strip()
+    )
     if admin_notify_email:
         send_smtp_email(
             to_email=admin_notify_email,
@@ -2172,6 +2299,7 @@ def create_support_ticket(
     return JSONResponse({
         "success": True,
         "ticket_id": ticket_id,
+        "idempotent": False,
         "message": f"Your ticket #{ticket_id} has been submitted! Our support team is reviewing it."
     })
 
@@ -2931,6 +3059,18 @@ def admin_get_all_tickets(admin_user: Dict[str, Any] = Depends(require_admin)):
     rows = c.fetchall()
     conn.close()
     return JSONResponse({"success": True, "tickets": [dict(r) for r in rows]})
+
+@app.post("/api/admin/backup")
+def admin_trigger_backup(admin_user: Dict[str, Any] = Depends(require_admin)):
+    """Admin-only endpoint to trigger a point-in-time database snapshot."""
+    backup_file = backup_database()
+    if not backup_file:
+        raise HTTPException(status_code=500, detail="Database snapshot failed.")
+    return JSONResponse({
+        "success": True,
+        "backup_file": os.path.basename(backup_file),
+        "message": "Database snapshot created and rotated successfully."
+    })
 
 @app.post("/api/admin/tickets/reply")
 def admin_reply_ticket(
